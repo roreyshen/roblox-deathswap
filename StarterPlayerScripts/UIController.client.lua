@@ -3,7 +3,7 @@ local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local GameConfig    = require(ReplicatedStorage.Modules.GameConfig)
+local GameConfig    = require(ReplicatedStorage:WaitForChild("GameConfig"))
 local RemoteEvents  = ReplicatedStorage:WaitForChild("RemoteEvents")
 local RoundStateChanged = RemoteEvents:WaitForChild("RoundStateChanged")
 local UpdateTimers  = RemoteEvents:WaitForChild("UpdateTimers")

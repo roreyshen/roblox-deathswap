@@ -4,8 +4,8 @@ local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local RunService          = game:GetService("RunService")
 
-local GameConfig       = require(ReplicatedStorage.Modules.GameConfig)
-local MapManager       = require(ReplicatedStorage.Modules.MapManager)
+local GameConfig       = require(ReplicatedStorage:WaitForChild("GameConfig"))
+local MapManager       = require(ReplicatedStorage:WaitForChild("MapManager"))
 local InventoryManager = require(ServerScriptService.InventoryManager)
 local GameState        = require(ServerScriptService.GameState)
 

@@ -3,8 +3,8 @@ local Players          = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local GameConfig      = require(ReplicatedStorage.Modules.GameConfig)
-local MapManager      = require(ReplicatedStorage.Modules.MapManager)
+local GameConfig      = require(ReplicatedStorage:WaitForChild("GameConfig"))
+local MapManager      = require(ReplicatedStorage:WaitForChild("MapManager"))
 local InventoryManager = require(ServerScriptService.InventoryManager)
 local DataManager     = require(ServerScriptService.DataManager)
 local GameState       = require(ServerScriptService.GameState)
@@ -99,7 +99,14 @@ end
 
 local function spawnAllPlayers()
 	local spawnCFrames = MapManager.getSpawnCFrames()
-	local playerList   = Players:GetPlayers()
+
+	-- Shuffle spawn points so players get a different spot each round
+	for i = #spawnCFrames, 2, -1 do
+		local j = math.random(1, i)
+		spawnCFrames[i], spawnCFrames[j] = spawnCFrames[j], spawnCFrames[i]
+	end
+
+	local playerList = Players:GetPlayers()
 
 	-- Assign spawn points; cycle if more players than points
 	local numSpawns = #spawnCFrames

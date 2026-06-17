@@ -4,7 +4,7 @@ local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local GameConfig    = require(ReplicatedStorage.Modules.GameConfig)
+local GameConfig    = require(ReplicatedStorage:WaitForChild("GameConfig"))
 local RemoteEvents  = ReplicatedStorage:WaitForChild("RemoteEvents")
 local PlaceBlock    = RemoteEvents:WaitForChild("PlaceBlock")
 local RemoveBlock   = RemoteEvents:WaitForChild("RemoveBlock")
