@@ -3,16 +3,28 @@ return {
 	MIN_PLAYERS = 2,
 	MAX_PLAYERS = 4,
 
-	SWAP_INTERVAL    = 90,   -- seconds between swaps at round start
-	MIN_SWAP_INTERVAL = 20,  -- floor: never faster than this
-	SWAP_REDUCTION   = 10,   -- subtract this each time a swap fires
+	-- Setup phase (before PLAYING begins)
+	SETUP_DURATION = 60,          -- seconds to place Soul Crystal and build base
 
-	ROUND_DURATION    = 600, -- max round length in seconds (10 min)
+	-- Soul Crystal (anchor) settings
+	ANCHOR_MAX_HP        = 5,     -- hits to destroy
+	ANCHOR_MINE_COOLDOWN = 1,     -- seconds between hits by the same miner
+
+	-- Death-with-anchor penalty
+	RESPAWN_DELAY    = 4,         -- seconds before respawn at anchor
+	DEATH_LOSS_RATE  = 0.25,      -- fraction of total inventory randomly dropped
+
+	SWAP_INTERVAL    = 90,
+	MIN_SWAP_INTERVAL = 25,
+	SWAP_REDUCTION   = 10,
+	SWAP_COUNTDOWN   = 10,        -- seconds of dramatic countdown before each swap
+
+	ROUND_DURATION    = 600,
 	LOBBY_COUNTDOWN   = 15,
 	RESULTS_DURATION  = 10,
 
-	GRID_SIZE   = 4,  -- block size in studs (also grid snap unit)
-	PLACE_RANGE = 25, -- max studs from player to place/remove
+	GRID_SIZE   = 4,
+	PLACE_RANGE = 25,
 
 	-- Order matters: index 1-5 maps to hotbar slots 1-5
 	BLOCK_TYPES = {

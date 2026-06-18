@@ -1,6 +1,6 @@
 -- ModuleScript: ServerScriptService > InventoryManager
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local GameConfig = require(ReplicatedStorage.Modules.GameConfig)
+local GameConfig = require(ReplicatedStorage:WaitForChild("GameConfig"))
 
 local InventoryManager = {}
 local inventories = {}  -- [Player] = { blockId = count, ... }
@@ -33,6 +33,26 @@ function InventoryManager.refund(player, blockId, amount)
 	local inv = inventories[player]
 	if not inv then return end
 	inv[blockId] = (inv[blockId] or 0) + math.floor(amount * 0.5)
+end
+
+-- Drop approximately `rate` fraction of total items, chosen randomly across types
+function InventoryManager.loseRandom(player, rate)
+	local inv = inventories[player]
+	if not inv then return end
+
+	local totalItems = 0
+	for _, count in pairs(inv) do totalItems += count end
+
+	local toRemove = math.floor(totalItems * rate)
+	for _ = 1, toRemove do
+		local available = {}
+		for id, count in pairs(inv) do
+			if count > 0 then table.insert(available, id) end
+		end
+		if #available == 0 then break end
+		local chosen = available[math.random(1, #available)]
+		inv[chosen] -= 1
+	end
 end
 
 function InventoryManager.clear(player)

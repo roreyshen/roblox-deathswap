@@ -6,22 +6,27 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameConfig    = require(ReplicatedStorage:WaitForChild("GameConfig"))
 local RemoteEvents  = ReplicatedStorage:WaitForChild("RemoteEvents")
-local PlaceBlock    = RemoteEvents:WaitForChild("PlaceBlock")
-local RemoveBlock   = RemoteEvents:WaitForChild("RemoveBlock")
-local UpdateInventory = RemoteEvents:WaitForChild("UpdateInventory")
+local PlaceBlock        = RemoteEvents:WaitForChild("PlaceBlock")
+local RemoveBlock       = RemoteEvents:WaitForChild("RemoveBlock")
+local PlaceAnchor       = RemoteEvents:WaitForChild("PlaceAnchor")
+local MineAnchor        = RemoteEvents:WaitForChild("MineAnchor")
+local UpdateInventory   = RemoteEvents:WaitForChild("UpdateInventory")
 local RoundStateChanged = RemoteEvents:WaitForChild("RoundStateChanged")
 
-local player    = Players.LocalPlayer
-local camera    = workspace.CurrentCamera
-local mouse     = player:GetMouse()
+local player   = Players.LocalPlayer
+local camera   = workspace.CurrentCamera
+local mouse    = player:GetMouse()
 
 -- ========== State ==========
 
-local canPlace     = false  -- only true during PLAYING
-local inventory    = {}     -- mirrors server inventory
-local selectedSlot = 1      -- 1-5 maps to BLOCK_TYPES index
-local GRID         = GameConfig.GRID_SIZE
-local BLOCK_TYPES  = GameConfig.BLOCK_TYPES
+local currentState   = "LOBBY"
+local canPlace       = false   -- true during SETUP and PLAYING
+local canPlaceAnchor = false   -- true during SETUP only (and only until placed)
+local anchorPlaced   = false   -- once placed, F key is locked
+local inventory      = {}
+local selectedSlot   = 1
+local GRID           = GameConfig.GRID_SIZE
+local BLOCK_TYPES    = GameConfig.BLOCK_TYPES
 
 -- ========== Grid snap ==========
 
@@ -36,18 +41,31 @@ end
 -- ========== Preview block ==========
 
 local previewBlock = Instance.new("Part")
-previewBlock.Name        = "PlacementPreview"
-previewBlock.Size        = Vector3.new(GRID, GRID, GRID)
-previewBlock.Anchored    = true
-previewBlock.CanCollide  = false
-previewBlock.CastShadow  = false
-previewBlock.Transparency = 0.6
-previewBlock.Material    = Enum.Material.SmoothPlastic
-previewBlock.Color       = Color3.fromRGB(130, 130, 130)
-previewBlock.Parent      = workspace
+previewBlock.Name         = "PlacementPreview"
+previewBlock.Size         = Vector3.new(GRID, GRID, GRID)
+previewBlock.Anchored     = true
+previewBlock.CanCollide   = false
+previewBlock.CastShadow   = false
+previewBlock.Transparency = 1
+previewBlock.Material     = Enum.Material.SmoothPlastic
+previewBlock.Color        = Color3.fromRGB(130, 130, 130)
+previewBlock.Parent       = workspace
+
+-- Crystal preview shown when aiming to place anchor
+local crystalPreview = Instance.new("Part")
+crystalPreview.Name         = "CrystalPreview"
+crystalPreview.Size         = Vector3.new(4, 5, 4)
+crystalPreview.Anchored     = true
+crystalPreview.CanCollide   = false
+crystalPreview.CastShadow   = false
+crystalPreview.Transparency = 0.7
+crystalPreview.Material     = Enum.Material.Neon
+crystalPreview.Color        = Color3.fromRGB(0, 210, 255)
+crystalPreview.Parent       = workspace
 
 local function hidePreview()
-	previewBlock.Transparency = 1
+	previewBlock.Transparency  = 1
+	crystalPreview.Transparency = 1
 end
 
 local function updatePreviewBlock()
@@ -63,14 +81,15 @@ end
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-local function getPlacementTarget()
+local function getTarget(extraExclude)
 	local char = player.Character
 	if not char then return nil end
-	rayParams.FilterDescendantsInstances = { previewBlock, char }
+	local excludeList = { previewBlock, crystalPreview, char }
+	if extraExclude then table.insert(excludeList, extraExclude) end
+	rayParams.FilterDescendantsInstances = excludeList
 
 	local unitRay = camera:ScreenPointToRay(mouse.X, mouse.Y)
-	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * GameConfig.PLACE_RANGE, rayParams)
-	return result
+	return workspace:Raycast(unitRay.Origin, unitRay.Direction * GameConfig.PLACE_RANGE, rayParams)
 end
 
 -- ========== Render loop ==========
@@ -81,23 +100,36 @@ RunService.RenderStepped:Connect(function()
 		return
 	end
 
-	local result = getPlacementTarget()
-	if not result then
-		hidePreview()
-		return
+	-- Crystal preview when F is held-to-place or SETUP with no anchor yet
+	if canPlaceAnchor and not anchorPlaced then
+		local result = getTarget()
+		if result then
+			local snapped = snapToGrid(result.Position + result.Normal * (GRID / 2))
+			crystalPreview.CFrame       = CFrame.new(snapped)
+			crystalPreview.Transparency = 0.65
+		else
+			crystalPreview.Transparency = 1
+		end
+		previewBlock.Transparency = 1
+	else
+		-- Normal block preview
+		crystalPreview.Transparency = 1
+		local result = getTarget()
+		if result then
+			local snapped = snapToGrid(result.Position + result.Normal * (GRID / 2))
+			previewBlock.CFrame       = CFrame.new(snapped)
+			previewBlock.Transparency = 0.5
+		else
+			previewBlock.Transparency = 1
+		end
 	end
-
-	local snapped = snapToGrid(result.Position + result.Normal * (GRID / 2))
-	previewBlock.CFrame = CFrame.new(snapped)
-	previewBlock.Transparency = 0.5
 end)
 
 -- ========== Input ==========
 
--- Hotbar: number keys 1-5
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-
+-- Number keys: switch hotbar slot
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
 	local numMap = {
 		[Enum.KeyCode.One]   = 1,
 		[Enum.KeyCode.Two]   = 2,
@@ -109,67 +141,92 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if slot then
 		selectedSlot = slot
 		updatePreviewBlock()
-		-- Fire a BindableEvent or update the UI module directly
-		-- UIController listens to UpdateInventory which carries full inventory, so
-		-- we broadcast the selection change via a BindableEvent stored in LocalPlayer
 		local selChanged = player:FindFirstChild("SelectedSlotChanged")
 		if selChanged then selChanged:Fire(selectedSlot) end
-		return
 	end
 end)
 
--- Left-click: place block
+-- Left-click: place block OR place anchor (SETUP)
 mouse.Button1Down:Connect(function()
 	if not canPlace then return end
 
+	if canPlaceAnchor and not anchorPlaced then
+		-- Place Soul Crystal at aim position
+		local result = getTarget()
+		if not result then return end
+		local snapped = snapToGrid(result.Position + result.Normal * (GRID / 2))
+		PlaceAnchor:FireServer(snapped)
+		anchorPlaced   = true
+		canPlaceAnchor = false
+
+		-- Tell UIController anchor is placed
+		local anchorEvent = player:FindFirstChild("AnchorStatusChanged")
+		if anchorEvent then anchorEvent:Fire("placed") end
+		return
+	end
+
+	-- Normal block placement
 	local blockDef = BLOCK_TYPES[selectedSlot]
 	if not blockDef then return end
 	if (inventory[blockDef.id] or 0) <= 0 then return end
 
-	local result = getPlacementTarget()
+	local result = getTarget()
 	if not result then return end
-
 	local snapped = snapToGrid(result.Position + result.Normal * (GRID / 2))
 	PlaceBlock:FireServer(snapped, blockDef.id)
 end)
 
--- Right-click or E: remove block
-local function tryRemove()
+-- Right-click / E: remove block or mine anchor
+local function tryInteract()
 	if not canPlace then return end
-	local result = getPlacementTarget()
+
+	local result = getTarget()
 	if not result then return end
 	local target = result.Instance
-	if target and target:IsA("BasePart") then
+	if not target or not target:IsA("BasePart") then return end
+
+	if target:GetAttribute("IsAnchor") then
+		-- Mine the crystal (only during PLAYING)
+		if currentState == "PLAYING" then
+			MineAnchor:FireServer(target)
+		end
+	else
+		-- Remove block (refund 50%)
 		RemoveBlock:FireServer(target)
 	end
 end
 
-mouse.Button2Down:Connect(tryRemove)
+mouse.Button2Down:Connect(tryInteract)
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
 	if input.KeyCode == Enum.KeyCode.E then
-		tryRemove()
+		tryInteract()
 	end
 end)
 
 -- ========== Remote listeners ==========
 
 RoundStateChanged.OnClientEvent:Connect(function(state)
-	canPlace = (state == "PLAYING")
-	if not canPlace then
-		hidePreview()
+	currentState   = state
+	canPlace       = (state == "PLAYING" or state == "SETUP")
+	canPlaceAnchor = (state == "SETUP") and not anchorPlaced
+
+	if state == "SETUP" then
+		anchorPlaced = false  -- reset for new round
+		canPlaceAnchor = true
 	end
+
+	if not canPlace then hidePreview() end
 end)
 
 UpdateInventory.OnClientEvent:Connect(function(inv)
 	inventory = inv
-	-- Fire a BindableEvent so UIController can update the hotbar without coupling
 	local invChanged = player:FindFirstChild("InventoryChanged")
 	if invChanged then invChanged:Fire(inv) end
 end)
 
--- ========== Slot-changed BindableEvent (created here so UIController can connect) ==========
+-- ========== BindableEvents for UIController ==========
 
 local slotEvent = Instance.new("BindableEvent")
 slotEvent.Name   = "SelectedSlotChanged"
@@ -178,3 +235,7 @@ slotEvent.Parent = player
 local invEvent = Instance.new("BindableEvent")
 invEvent.Name   = "InventoryChanged"
 invEvent.Parent = player
+
+local anchorStatusEvent = Instance.new("BindableEvent")
+anchorStatusEvent.Name   = "AnchorStatusChanged"
+anchorStatusEvent.Parent = player

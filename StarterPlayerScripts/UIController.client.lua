@@ -5,9 +5,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameConfig    = require(ReplicatedStorage:WaitForChild("GameConfig"))
 local RemoteEvents  = ReplicatedStorage:WaitForChild("RemoteEvents")
-local RoundStateChanged = RemoteEvents:WaitForChild("RoundStateChanged")
-local UpdateTimers  = RemoteEvents:WaitForChild("UpdateTimers")
-local SwapPlayers   = RemoteEvents:WaitForChild("SwapPlayers")
+local RoundStateChanged  = RemoteEvents:WaitForChild("RoundStateChanged")
+local UpdateTimers       = RemoteEvents:WaitForChild("UpdateTimers")
+local SwapPlayers        = RemoteEvents:WaitForChild("SwapPlayers")
+local PlayerRespawning   = RemoteEvents:WaitForChild("PlayerRespawning")
+local PlayerEliminated   = RemoteEvents:WaitForChild("PlayerEliminated")
+local AnchorDestroyed    = RemoteEvents:WaitForChild("AnchorDestroyed")
+local AnchorHealthUpdate = RemoteEvents:WaitForChild("AnchorHealthUpdate")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -21,58 +25,135 @@ screenGui.ResetOnSpawn   = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent         = playerGui
 
--- Full-screen swap flash overlay
+-- Helpers
+local function makeLabel(name, size, pos, textColor, bgColor, bgTrans, font, zIndex)
+	local lbl = Instance.new("TextLabel")
+	lbl.Name                   = name
+	lbl.Size                   = size
+	lbl.Position               = pos
+	lbl.BackgroundColor3       = bgColor or Color3.new(0, 0, 0)
+	lbl.BackgroundTransparency = bgTrans or 1
+	lbl.TextColor3             = textColor or Color3.new(1, 1, 1)
+	lbl.TextScaled             = true
+	lbl.Font                   = font or Enum.Font.Gotham
+	lbl.Text                   = ""
+	lbl.ZIndex                 = zIndex or 1
+	lbl.Visible                = false
+	lbl.Parent                 = screenGui
+	return lbl
+end
+
+-- Swap flash overlay
 local flashFrame = Instance.new("Frame")
-flashFrame.Name            = "FlashOverlay"
-flashFrame.Size            = UDim2.fromScale(1, 1)
-flashFrame.BackgroundColor3 = Color3.new(1, 1, 1)
-flashFrame.BackgroundTransparency = 1
-flashFrame.ZIndex          = 10
-flashFrame.Parent          = screenGui
+flashFrame.Size                    = UDim2.fromScale(1, 1)
+flashFrame.BackgroundColor3        = Color3.new(1, 1, 1)
+flashFrame.BackgroundTransparency  = 1
+flashFrame.ZIndex                  = 20
+flashFrame.Parent                  = screenGui
 
--- Status label (shown during lobby / countdown / results)
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Name            = "StatusLabel"
-statusLabel.Size            = UDim2.new(0.6, 0, 0.1, 0)
-statusLabel.Position        = UDim2.new(0.2, 0, 0.42, 0)
-statusLabel.BackgroundTransparency = 1
-statusLabel.TextColor3      = Color3.new(1, 1, 1)
-statusLabel.TextScaled      = true
-statusLabel.Font            = Enum.Font.GothamBold
-statusLabel.Text            = "Waiting for players..."
-statusLabel.Parent          = screenGui
+-- Status label (lobby / countdown / results)
+local statusLabel = makeLabel("StatusLabel",
+	UDim2.new(0.6, 0, 0.1, 0),
+	UDim2.new(0.2, 0, 0.42, 0),
+	Color3.new(1, 1, 1), nil, 1, Enum.Font.GothamBold)
+statusLabel.Text    = "Waiting for players..."
+statusLabel.Visible = true
 
--- Swap timer (top-center)
-local swapLabel = Instance.new("TextLabel")
-swapLabel.Name            = "SwapLabel"
-swapLabel.Size            = UDim2.new(0.3, 0, 0.07, 0)
-swapLabel.Position        = UDim2.new(0.35, 0, 0.02, 0)
-swapLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-swapLabel.BackgroundTransparency = 0.4
-swapLabel.TextColor3      = Color3.new(1, 1, 0)
-swapLabel.TextScaled      = true
-swapLabel.Font            = Enum.Font.GothamBold
-swapLabel.Text            = "SWAP IN: --"
-swapLabel.Visible         = false
-swapLabel.Parent          = screenGui
+-- ── SETUP PHASE banner ──
+local setupBanner = makeLabel("SetupBanner",
+	UDim2.new(0.7, 0, 0.09, 0),
+	UDim2.new(0.15, 0, 0.02, 0),
+	Color3.fromRGB(0, 220, 255),
+	Color3.fromRGB(10, 10, 30), 0.35,
+	Enum.Font.GothamBold, 5)
+setupBanner.TextXAlignment = Enum.TextXAlignment.Center
+Instance.new("UICorner", setupBanner).CornerRadius = UDim.new(0, 8)
+
+-- ── Swap label (top-center) ──
+local swapLabel = makeLabel("SwapLabel",
+	UDim2.new(0.3, 0, 0.07, 0),
+	UDim2.new(0.35, 0, 0.02, 0),
+	Color3.new(1, 1, 0),
+	Color3.fromRGB(20, 20, 20), 0.4,
+	Enum.Font.GothamBold)
+swapLabel.Text = "SWAP IN: --"
 Instance.new("UICorner", swapLabel).CornerRadius = UDim.new(0, 6)
 
--- Round timer (top-right)
-local roundLabel = Instance.new("TextLabel")
-roundLabel.Name            = "RoundLabel"
-roundLabel.Size            = UDim2.new(0.2, 0, 0.05, 0)
-roundLabel.Position        = UDim2.new(0.78, 0, 0.03, 0)
-roundLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-roundLabel.BackgroundTransparency = 0.5
-roundLabel.TextColor3      = Color3.new(1, 1, 1)
-roundLabel.TextScaled      = true
-roundLabel.Font            = Enum.Font.Gotham
-roundLabel.Text            = ""
-roundLabel.Visible         = false
-roundLabel.Parent          = screenGui
+-- ── Big swap-countdown number (center of screen) ──
+local bigCountdown = makeLabel("BigCountdown",
+	UDim2.new(0.2, 0, 0.2, 0),
+	UDim2.new(0.4, 0, 0.35, 0),
+	Color3.new(1, 0.2, 0.2),
+	nil, 1, Enum.Font.GothamBold, 8)
+bigCountdown.TextXAlignment = Enum.TextXAlignment.Center
+
+-- ── Round timer (top-right) ──
+local roundLabel = makeLabel("RoundLabel",
+	UDim2.new(0.2, 0, 0.05, 0),
+	UDim2.new(0.78, 0, 0.03, 0),
+	Color3.new(1, 1, 1),
+	Color3.fromRGB(20, 20, 20), 0.5,
+	Enum.Font.Gotham)
 Instance.new("UICorner", roundLabel).CornerRadius = UDim.new(0, 6)
 
--- Win screen (hidden until results)
+-- ── Anchor status (left side, below center) ──
+local anchorStatus = Instance.new("Frame")
+anchorStatus.Name                   = "AnchorStatus"
+anchorStatus.Size                   = UDim2.new(0.22, 0, 0.06, 0)
+anchorStatus.Position               = UDim2.new(0.01, 0, 0.44, 0)
+anchorStatus.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
+anchorStatus.BackgroundTransparency = 0.4
+anchorStatus.Visible                = false
+anchorStatus.Parent                 = screenGui
+Instance.new("UICorner", anchorStatus).CornerRadius = UDim.new(0, 8)
+
+local anchorStatusLabel = Instance.new("TextLabel", anchorStatus)
+anchorStatusLabel.Size                   = UDim2.fromScale(1, 1)
+anchorStatusLabel.BackgroundTransparency = 1
+anchorStatusLabel.TextColor3             = Color3.new(0.5, 1, 1)
+anchorStatusLabel.TextScaled             = true
+anchorStatusLabel.Font                   = Enum.Font.GothamBold
+anchorStatusLabel.Text                   = "Soul Crystal: NOT PLACED"
+
+-- ── Respawn overlay ──
+local respawnFrame = Instance.new("Frame")
+respawnFrame.Size                    = UDim2.fromScale(1, 1)
+respawnFrame.BackgroundColor3        = Color3.new(0, 0, 0)
+respawnFrame.BackgroundTransparency  = 0.5
+respawnFrame.ZIndex                  = 15
+respawnFrame.Visible                 = false
+respawnFrame.Parent                  = screenGui
+
+local respawnLabel = Instance.new("TextLabel", respawnFrame)
+respawnLabel.Size                   = UDim2.new(0.6, 0, 0.2, 0)
+respawnLabel.Position               = UDim2.new(0.2, 0, 0.4, 0)
+respawnLabel.BackgroundTransparency = 1
+respawnLabel.TextColor3             = Color3.fromRGB(255, 80, 80)
+respawnLabel.TextScaled             = true
+respawnLabel.Font                   = Enum.Font.GothamBold
+respawnLabel.Text                   = "RESPAWNING..."
+respawnLabel.ZIndex                 = 16
+
+local respawnSubLabel = Instance.new("TextLabel", respawnFrame)
+respawnSubLabel.Size                   = UDim2.new(0.5, 0, 0.1, 0)
+respawnSubLabel.Position               = UDim2.new(0.25, 0, 0.62, 0)
+respawnSubLabel.BackgroundTransparency = 1
+respawnSubLabel.TextColor3             = Color3.new(1, 1, 1)
+respawnSubLabel.TextScaled             = true
+respawnSubLabel.Font                   = Enum.Font.Gotham
+respawnSubLabel.Text                   = "(25% of items lost)"
+respawnSubLabel.ZIndex                 = 16
+
+-- ── Announcement banner (center, temporary) ──
+local announceBanner = makeLabel("AnnounceBanner",
+	UDim2.new(0.6, 0, 0.08, 0),
+	UDim2.new(0.2, 0, 0.2, 0),
+	Color3.new(1, 1, 1),
+	Color3.fromRGB(10, 10, 10), 0.3,
+	Enum.Font.GothamBold, 10)
+Instance.new("UICorner", announceBanner).CornerRadius = UDim.new(0, 8)
+
+-- ── Results screen ──
 local winScreen = Instance.new("Frame")
 winScreen.Name                   = "WinScreen"
 winScreen.Size                   = UDim2.new(0.5, 0, 0.3, 0)
@@ -83,16 +164,14 @@ winScreen.Visible                = false
 winScreen.Parent                 = screenGui
 Instance.new("UICorner", winScreen).CornerRadius = UDim.new(0, 12)
 
-local winLabel = Instance.new("TextLabel")
-winLabel.Size            = UDim2.fromScale(1, 1)
+local winLabel = Instance.new("TextLabel", winScreen)
+winLabel.Size                   = UDim2.fromScale(1, 1)
 winLabel.BackgroundTransparency = 1
-winLabel.TextColor3      = Color3.new(1, 1, 0)
-winLabel.TextScaled      = true
-winLabel.Font            = Enum.Font.GothamBold
-winLabel.Text            = ""
-winLabel.Parent          = winScreen
+winLabel.TextColor3             = Color3.new(1, 1, 0)
+winLabel.TextScaled             = true
+winLabel.Font                   = Enum.Font.GothamBold
 
--- Hotbar (bottom-center)
+-- ── Hotbar (bottom-center) ──
 local hotbarFrame = Instance.new("Frame")
 hotbarFrame.Name                   = "HotbarFrame"
 hotbarFrame.Size                   = UDim2.new(0, #BLOCK_TYPES * 70, 0, 70)
@@ -101,7 +180,7 @@ hotbarFrame.BackgroundTransparency = 1
 hotbarFrame.Visible                = false
 hotbarFrame.Parent                 = screenGui
 
-local slotFrames = {}
+local slotFrames  = {}
 local countLabels = {}
 
 for i, blockDef in ipairs(BLOCK_TYPES) do
@@ -113,30 +192,27 @@ for i, blockDef in ipairs(BLOCK_TYPES) do
 	slot.Parent          = hotbarFrame
 	Instance.new("UICorner", slot).CornerRadius = UDim.new(0, 6)
 
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size            = UDim2.new(1, 0, 0.5, 0)
+	local nameLabel = Instance.new("TextLabel", slot)
+	nameLabel.Size                   = UDim2.new(1, 0, 0.5, 0)
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.TextColor3      = Color3.new(1, 1, 1)
-	nameLabel.TextScaled      = true
-	nameLabel.Font            = Enum.Font.GothamBold
-	nameLabel.Text            = blockDef.id
-	nameLabel.Parent          = slot
+	nameLabel.TextColor3             = Color3.new(1, 1, 1)
+	nameLabel.TextScaled             = true
+	nameLabel.Font                   = Enum.Font.GothamBold
+	nameLabel.Text                   = blockDef.id
 
-	local countLabel = Instance.new("TextLabel")
-	countLabel.Size            = UDim2.new(1, 0, 0.5, 0)
-	countLabel.Position        = UDim2.new(0, 0, 0.5, 0)
+	local countLabel = Instance.new("TextLabel", slot)
+	countLabel.Size                   = UDim2.new(1, 0, 0.5, 0)
+	countLabel.Position               = UDim2.new(0, 0, 0.5, 0)
 	countLabel.BackgroundTransparency = 1
-	countLabel.TextColor3      = Color3.new(1, 1, 1)
-	countLabel.TextScaled      = true
-	countLabel.Font            = Enum.Font.Gotham
-	countLabel.Text            = "0"
-	countLabel.Parent          = slot
+	countLabel.TextColor3             = Color3.new(1, 1, 1)
+	countLabel.TextScaled             = true
+	countLabel.Font                   = Enum.Font.Gotham
+	countLabel.Text                   = "0"
 
 	slotFrames[i]  = slot
 	countLabels[i] = countLabel
 end
 
-local selectedSlot = 1
 local function highlightSlot(index)
 	for i, frame in ipairs(slotFrames) do
 		frame.BorderColor3 = (i == index) and Color3.new(1, 1, 1) or Color3.fromRGB(80, 80, 80)
@@ -144,7 +220,7 @@ local function highlightSlot(index)
 end
 highlightSlot(1)
 
--- ========== Remote listeners ==========
+-- ========== Helpers ==========
 
 local function formatTime(seconds)
 	local m = math.floor(seconds / 60)
@@ -152,65 +228,168 @@ local function formatTime(seconds)
 	return string.format("%d:%02d", m, s)
 end
 
-RoundStateChanged.OnClientEvent:Connect(function(state, data)
-	local isPlaying  = (state == "PLAYING")
-	local isResults  = (state == "RESULTS")
-	local isLobby    = (state == "LOBBY" or state == "COUNTDOWN")
+local announceCo  -- coroutine handle for announcement
+local function showAnnouncement(text, color, duration)
+	if announceCo and coroutine.status(announceCo) ~= "dead" then
+		-- Just update immediately if already showing
+	end
+	announceBanner.Text    = text
+	announceBanner.TextColor3 = color or Color3.new(1, 1, 1)
+	announceBanner.Visible = true
+	announceCo = task.delay(duration or 3, function()
+		announceBanner.Visible = false
+	end)
+end
 
-	swapLabel.Visible  = isPlaying
-	roundLabel.Visible = isPlaying
-	hotbarFrame.Visible = isPlaying
-	winScreen.Visible  = isResults
+-- ========== State tracking ──
+local currentState   = "LOBBY"
+local myAnchorAlive  = false  -- set true when placed, false when destroyed
+
+-- ========== Remote listeners ==========
+
+RoundStateChanged.OnClientEvent:Connect(function(state, data)
+	currentState = state
+
+	local isSetup   = (state == "SETUP")
+	local isPlaying = (state == "PLAYING")
+	local isResults = (state == "RESULTS")
+	local isLobby   = (state == "LOBBY" or state == "COUNTDOWN")
+
+	-- Visibility toggles
+	statusLabel.Visible  = isLobby
+	setupBanner.Visible  = isSetup
+	swapLabel.Visible    = isPlaying
+	roundLabel.Visible   = isPlaying
+	bigCountdown.Visible = false
+	hotbarFrame.Visible  = (isSetup or isPlaying)
+	winScreen.Visible    = isResults
+	anchorStatus.Visible = (isSetup or isPlaying)
 
 	if isLobby then
-		statusLabel.Visible = true
-		statusLabel.Text    = (state == "COUNTDOWN") and "Game starting..." or "Waiting for players..."
-	elseif isPlaying then
-		statusLabel.Visible = false
+		statusLabel.Text = (state == "COUNTDOWN") and "Game starting..." or "Waiting for players..."
+	elseif isSetup then
+		myAnchorAlive = false
+		anchorStatusLabel.Text       = "Soul Crystal: NOT PLACED"
+		anchorStatusLabel.TextColor3 = Color3.fromRGB(255, 180, 0)
 	elseif isResults then
-		statusLabel.Visible = false
 		winLabel.Text = data and (data .. " wins!") or "Game Over"
+		respawnFrame.Visible = false
 	end
 end)
 
-UpdateTimers.OnClientEvent:Connect(function(timeToSwap, timeLeft)
-	swapLabel.Text  = "SWAP IN: " .. math.max(0, math.floor(timeToSwap))
-	roundLabel.Text = formatTime(math.max(0, math.floor(timeLeft)))
+UpdateTimers.OnClientEvent:Connect(function(timeToSwap, timeLeft, setupTimeLeft)
+	if currentState == "SETUP" then
+		local t = math.max(0, math.floor(setupTimeLeft or 0))
+		setupBanner.Text = string.format(
+			"SETUP PHASE  %ds  |  Left-click to place Soul Crystal  |  1-5 to build", t)
 
-	-- Turn swap label red in the last 10 seconds before a swap
-	if timeToSwap <= 10 then
-		swapLabel.TextColor3 = Color3.new(1, 0.2, 0.2)
-	else
-		swapLabel.TextColor3 = Color3.new(1, 1, 0)
+	elseif currentState == "PLAYING" then
+		local ts = math.max(0, math.floor(timeToSwap))
+		local tl = math.max(0, math.floor(timeLeft))
+		swapLabel.Text  = "SWAP IN: " .. ts
+		roundLabel.Text = formatTime(tl)
+
+		if ts <= GameConfig.SWAP_COUNTDOWN and ts > 0 then
+			swapLabel.TextColor3   = Color3.new(1, 0.15, 0.15)
+			bigCountdown.Text      = tostring(ts)
+			bigCountdown.Visible   = true
+		elseif ts == 0 then
+			bigCountdown.Visible   = false
+			swapLabel.TextColor3   = Color3.new(1, 1, 0)
+		else
+			bigCountdown.Visible   = false
+			swapLabel.TextColor3   = Color3.new(1, 1, 0)
+		end
+
+	elseif currentState == "LOBBY" or currentState == "COUNTDOWN" then
+		local t = math.max(0, math.floor(timeToSwap))
+		statusLabel.Text = t > 0 and ("Starting in " .. t .. "s") or statusLabel.Text
 	end
 end)
 
 SwapPlayers.OnClientEvent:Connect(function()
-	-- White flash effect on swap
 	flashFrame.BackgroundTransparency = 0
-	TweenService:Create(flashFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+	TweenService:Create(flashFrame, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
+	bigCountdown.Visible = false
+end)
+
+-- Anchor placed (local client confirms via BindableEvent from PlacementClient)
+task.spawn(function()
+	local ae = player:WaitForChild("AnchorStatusChanged", 10)
+	if ae then
+		ae.Event:Connect(function(status)
+			if status == "placed" then
+				myAnchorAlive                = true
+				anchorStatusLabel.Text       = "Soul Crystal: ACTIVE"
+				anchorStatusLabel.TextColor3 = Color3.fromRGB(0, 220, 255)
+			end
+		end)
+	end
+end)
+
+-- Anchor health update (show crack progress)
+AnchorHealthUpdate.OnClientEvent:Connect(function(ownerUserId, hp, maxHp)
+	if ownerUserId == player.UserId then
+		local pct = hp / (maxHp or GameConfig.ANCHOR_MAX_HP)
+		local barStr = string.rep("|", math.ceil(pct * 10)) .. string.rep(" ", 10 - math.ceil(pct * 10))
+		anchorStatusLabel.Text       = string.format("Soul Crystal: [%s] %d/%d", barStr, hp, maxHp or 5)
+		anchorStatusLabel.TextColor3 = Color3.fromRGB(255, math.floor(pct * 200), 0)
+	end
+end)
+
+-- Anchor destroyed
+AnchorDestroyed.OnClientEvent:Connect(function(ownerUserId, ownerName)
+	if ownerUserId == player.UserId then
+		myAnchorAlive                = false
+		anchorStatusLabel.Text       = "Soul Crystal: DESTROYED!"
+		anchorStatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+		-- Big warning flash
+		showAnnouncement("YOUR CRYSTAL WAS DESTROYED!\nNEXT DEATH = ELIMINATED", Color3.fromRGB(255, 50, 50), 5)
+	else
+		showAnnouncement(ownerName .. "'s Crystal was destroyed!", Color3.fromRGB(255, 180, 0), 3)
+	end
+end)
+
+-- Player respawning countdown
+PlayerRespawning.OnClientEvent:Connect(function(delay)
+	respawnFrame.Visible = true
+	task.spawn(function()
+		for i = delay, 1, -1 do
+			respawnLabel.Text = "RESPAWNING IN " .. i .. "..."
+			task.wait(1)
+		end
+		respawnFrame.Visible = false
+		respawnLabel.Text    = "RESPAWNING..."
+	end)
+end)
+
+-- Player eliminated
+PlayerEliminated.OnClientEvent:Connect(function(playerName)
+	if playerName == player.Name then
+		showAnnouncement("YOU HAVE BEEN ELIMINATED!", Color3.fromRGB(255, 50, 50), 5)
+	else
+		showAnnouncement(playerName .. " has been ELIMINATED!", Color3.fromRGB(255, 120, 0), 3)
+	end
 end)
 
 -- ========== Hotbar updates from PlacementClient ==========
 
--- Wait for PlacementClient to create its BindableEvents
 task.spawn(function()
-	local invEvent  = player:WaitForChild("InventoryChanged", 10)
+	local invEvent  = player:WaitForChild("InventoryChanged",    10)
 	local slotEvent = player:WaitForChild("SelectedSlotChanged", 10)
 
 	if invEvent then
 		invEvent.Event:Connect(function(inv)
 			for i, blockDef in ipairs(BLOCK_TYPES) do
-				countLabels[i].Text = tostring(inv[blockDef.id] or 0)
-				-- Grey out slots with 0 blocks
-				slotFrames[i].BackgroundTransparency = (inv[blockDef.id] or 0) == 0 and 0.6 or 0
+				local count = inv[blockDef.id] or 0
+				countLabels[i].Text                     = tostring(count)
+				slotFrames[i].BackgroundTransparency    = count == 0 and 0.6 or 0
 			end
 		end)
 	end
 
 	if slotEvent then
 		slotEvent.Event:Connect(function(slot)
-			selectedSlot = slot
 			highlightSlot(slot)
 		end)
 	end

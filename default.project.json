@@ -1,0 +1,51 @@
+{
+  "name": "deathswap",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+
+      "GameConfig": { "$path": "ReplicatedStorage/Modules/GameConfig.lua" },
+      "MapManager":  { "$path": "ReplicatedStorage/Modules/MapManager.lua" },
+
+      "RemoteEvents": {
+        "$className": "Folder",
+        "SwapPlayers":        { "$className": "RemoteEvent" },
+        "PlaceBlock":         { "$className": "RemoteEvent" },
+        "RemoveBlock":        { "$className": "RemoteEvent" },
+        "RoundStateChanged":  { "$className": "RemoteEvent" },
+        "UpdateTimers":       { "$className": "RemoteEvent" },
+        "UpdateInventory":    { "$className": "RemoteEvent" },
+        "PlaceAnchor":        { "$className": "RemoteEvent" },
+        "MineAnchor":         { "$className": "RemoteEvent" },
+        "AnchorDestroyed":    { "$className": "RemoteEvent" },
+        "AnchorHealthUpdate": { "$className": "RemoteEvent" },
+        "PlayerRespawning":   { "$className": "RemoteEvent" },
+        "PlayerEliminated":   { "$className": "RemoteEvent" }
+      }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$path": "ServerScriptService"
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "StarterPlayerScripts"
+      }
+    },
+
+    "Workspace": {
+      "$className": "Workspace",
+      "Map": {
+        "$className": "Folder",
+        "PlayerBuilds": { "$className": "Folder" },
+        "SpawnPoints":  { "$className": "Folder" }
+      }
+    }
+  }
+}
