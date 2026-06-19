@@ -136,6 +136,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 		[Enum.KeyCode.Three] = 3,
 		[Enum.KeyCode.Four]  = 4,
 		[Enum.KeyCode.Five]  = 5,
+		[Enum.KeyCode.Six]   = 6,
 	}
 	local slot = numMap[input.KeyCode]
 	if slot then
