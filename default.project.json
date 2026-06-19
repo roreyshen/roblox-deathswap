@@ -27,7 +27,8 @@
         "ArmorEquipped":      { "$className": "RemoteEvent" },
         "UpdateCurrency":     { "$className": "RemoteEvent" },
         "PurchaseItem":       { "$className": "RemoteEvent" },
-        "ShopResponse":       { "$className": "RemoteEvent" }
+        "ShopResponse":       { "$className": "RemoteEvent" },
+        "OpenShop":           { "$className": "RemoteEvent" }
       }
     },
 

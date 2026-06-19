@@ -23,9 +23,26 @@ local PlayerEliminated   = RemoteEvents:WaitForChild("PlayerEliminated")
 local EquipArmor         = RemoteEvents:WaitForChild("EquipArmor")
 local ArmorEquipped      = RemoteEvents:WaitForChild("ArmorEquipped")
 local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
+local OpenShop           = RemoteEvents:WaitForChild("OpenShop")
 
 -- Initialize shop purchase handler
 ShopManager.init(RemoteEvents, UpdateInventory, UpdateCurrency)
+
+-- Connects ProximityPrompt.Triggered on all shop signs in the map
+local function wireShopPrompts()
+	local map   = workspace:FindFirstChild("Map")
+	if not map then return end
+	local shops = map:FindFirstChild("Shops")
+	if not shops then return end
+	for _, sign in ipairs(shops:GetChildren()) do
+		local prompt = sign:FindFirstChildOfClass("ProximityPrompt")
+		if prompt then
+			prompt.Triggered:Connect(function(player)
+				OpenShop:FireClient(player, CurrencyManager.get(player))
+			end)
+		end
+	end
+end
 
 Players.CharacterAutoLoads = false
 
@@ -244,6 +261,7 @@ while true do
 	-- Reset world and generate a fresh random island
 	MapManager.reset()
 	MapManager.generate()
+	wireShopPrompts()
 	AnchorManager.clearAll()
 	aliveSet      = {}
 	respawningSet = {}

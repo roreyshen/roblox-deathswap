@@ -122,6 +122,56 @@ function MapGenerator.generate(mapFolder)
 		Color3.fromRGB(162, 162, 162), Enum.Material.SmoothPlastic)
 	centerPlatform.CanCollide = true
 
+	-- Shop signs above each spawn platform + center platform
+	local shopPositions = {}
+	for _, sp in ipairs(spawnDirs) do
+		table.insert(shopPositions, Vector3.new(cx + sp.dx, platformY + 3, cz + sp.dz))
+	end
+	table.insert(shopPositions, Vector3.new(cx, platformY + 3, cz))  -- center shop
+
+	local shopFolder = mapFolder:FindFirstChild("Shops")
+	if shopFolder then shopFolder:Destroy() end
+	shopFolder = Instance.new("Folder")
+	shopFolder.Name   = "Shops"
+	shopFolder.Parent = mapFolder
+
+	for i, pos in ipairs(shopPositions) do
+		local sign = Instance.new("Part")
+		sign.Name         = "ShopSign" .. i
+		sign.Size         = Vector3.new(3, 4, 0.5)
+		sign.CFrame       = CFrame.new(pos)
+		sign.Anchored     = true
+		sign.CanCollide   = false
+		sign.Color        = Color3.fromRGB(240, 200, 40)
+		sign.Material     = Enum.Material.SmoothPlastic
+		sign.CastShadow   = false
+		sign:SetAttribute("IsShop", true)
+		sign.Parent       = shopFolder
+
+		-- Billboard label
+		local billboard = Instance.new("BillboardGui")
+		billboard.Size          = UDim2.new(0, 140, 0, 60)
+		billboard.StudsOffset   = Vector3.new(0, 3, 0)
+		billboard.AlwaysOnTop   = false
+		billboard.Parent        = sign
+
+		local label = Instance.new("TextLabel", billboard)
+		label.Size                   = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 1
+		label.TextColor3             = Color3.fromRGB(40, 20, 0)
+		label.TextScaled             = true
+		label.Font                   = Enum.Font.GothamBold
+		label.Text                   = "🛒 SHOP\nPress E"
+
+		-- ProximityPrompt (server fires OpenShop to the triggering player)
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText       = "Open Shop"
+		prompt.ObjectText       = "Shop"
+		prompt.MaxActivationDistance = 12
+		prompt.HoldDuration     = 0
+		prompt.Parent           = sign
+	end
+
 	return {
 		islandCenter = Vector3.new(cx, platformY, cz),
 		topY         = topY,
@@ -202,9 +252,13 @@ function MapGenerator.clear(mapFolder)
 		end
 	end
 
-	-- Clear kill border (tagged as part of Generated or separate)
+	-- Clear kill border
 	local border = mapFolder:FindFirstChild("KillBorder")
 	if border then border:Destroy() end
+
+	-- Clear shops
+	local shops = mapFolder:FindFirstChild("Shops")
+	if shops then shops:Destroy() end
 end
 
 return MapGenerator
