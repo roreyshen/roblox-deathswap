@@ -9,7 +9,8 @@ local InventoryManager = require(ServerScriptService.InventoryManager)
 local DataManager      = require(ServerScriptService.DataManager)
 local GameState        = require(ServerScriptService.GameState)
 local AnchorManager    = require(ServerScriptService.AnchorManager)
-local ArmorManager     = require(ServerScriptService.ArmorManager)
+local ArmorManager      = require(ServerScriptService.ArmorManager)
+local CurrencyManager   = require(ServerScriptService.CurrencyManager)
 
 local RemoteEvents       = ReplicatedStorage:WaitForChild("RemoteEvents")
 local SwapPlayers        = RemoteEvents:WaitForChild("SwapPlayers")
@@ -20,6 +21,7 @@ local PlayerRespawning   = RemoteEvents:WaitForChild("PlayerRespawning")
 local PlayerEliminated   = RemoteEvents:WaitForChild("PlayerEliminated")
 local EquipArmor         = RemoteEvents:WaitForChild("EquipArmor")
 local ArmorEquipped      = RemoteEvents:WaitForChild("ArmorEquipped")
+local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
 
 Players.CharacterAutoLoads = false
 
@@ -79,7 +81,9 @@ local function spawnAllPlayers()
 	for i, player in ipairs(list) do
 		aliveSet[player] = true
 		InventoryManager.reset(player)
+		CurrencyManager.reset(player)
 		UpdateInventory:FireClient(player, InventoryManager.get(player))
+		UpdateCurrency:FireClient(player, CurrencyManager.get(player))
 		local cf = n > 0 and cframes[((i - 1) % n) + 1] or nil
 		spawnPlayer(player, cf)
 	end
@@ -157,6 +161,7 @@ Players.PlayerRemoving:Connect(function(player)
 	InventoryManager.clear(player)
 	AnchorManager.clear(player)
 	ArmorManager.clear(player)
+	CurrencyManager.clear(player)
 end)
 
 -- ========== Swap logic ==========
@@ -258,6 +263,12 @@ while true do
 		local timeToSwap = currentInterval - swapTimer
 		local timeLeft   = GameConfig.ROUND_DURATION - roundTimer
 		UpdateTimers:FireAllClients(timeToSwap, timeLeft, 0)
+
+		-- Passive currency income for alive players
+		for _, p in ipairs(getAlivePlayers()) do
+			local newBal = CurrencyManager.add(p, CurrencyManager.COINS_PER_SECOND)
+			UpdateCurrency:FireClient(p, newBal)
+		end
 
 		if swapTimer >= currentInterval then
 			swapTimer = 0
