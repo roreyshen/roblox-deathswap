@@ -28,7 +28,8 @@
 
     "ServerScriptService": {
       "$className": "ServerScriptService",
-      "$path": "ServerScriptService"
+      "$path": "ServerScriptService",
+      "MapGenerator": { "$path": "ServerScriptService/MapGenerator.lua" }
     },
 
     "StarterPlayer": {

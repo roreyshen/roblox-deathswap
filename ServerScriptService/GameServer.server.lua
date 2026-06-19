@@ -213,8 +213,9 @@ while true do
 	setState("COUNTDOWN")
 	if not runLobbyCountdown() then continue end
 
-	-- Reset world
+	-- Reset world and generate a fresh random island
 	MapManager.reset()
+	MapManager.generate()
 	AnchorManager.clearAll()
 	aliveSet      = {}
 	respawningSet = {}
