@@ -129,6 +129,63 @@ function MapGenerator.generate(mapFolder)
 	}
 end
 
+-- Builds invisible kill-border walls + void kill floor around the island.
+-- borderSize: half-extent of the square border (studs from center)
+function MapGenerator.buildKillBorder(mapFolder, borderSize)
+	local border = mapFolder:FindFirstChild("KillBorder")
+	if border then border:Destroy() end
+	border = Instance.new("Folder")
+	border.Name   = "KillBorder"
+	border.Parent = mapFolder
+
+	local wallH  = 60   -- tall enough players can't jump over
+	local wallT  = 4    -- thickness
+	local wallY  = ISLAND_Y + wallH / 2
+
+	-- Helper: create a kill wall that fires damage on touch
+	local function makeWall(name, size, position)
+		local wall = Instance.new("Part")
+		wall.Name          = name
+		wall.Size          = size
+		wall.CFrame        = CFrame.new(position)
+		wall.Anchored      = true
+		wall.CanCollide    = true
+		wall.Transparency  = 1
+		wall.CastShadow    = false
+		wall.Parent        = border
+
+		wall.Touched:Connect(function(hit)
+			local char = hit.Parent
+			local hum  = char and char:FindFirstChildOfClass("Humanoid")
+			if hum then hum:TakeDamage(9999) end
+		end)
+	end
+
+	local B = borderSize
+	makeWall("WallN", Vector3.new(B*2+wallT*2, wallH, wallT), Vector3.new(0, wallY, -B))
+	makeWall("WallS", Vector3.new(B*2+wallT*2, wallH, wallT), Vector3.new(0, wallY,  B))
+	makeWall("WallE", Vector3.new(wallT, wallH, B*2),         Vector3.new( B, wallY, 0))
+	makeWall("WallW", Vector3.new(wallT, wallH, B*2),         Vector3.new(-B, wallY, 0))
+
+	-- Void kill floor far below island
+	local floor = Instance.new("Part")
+	floor.Name         = "VoidFloor"
+	floor.Size         = Vector3.new(B*2+100, 4, B*2+100)
+	floor.CFrame       = CFrame.new(0, ISLAND_Y - 80, 0)
+	floor.Anchored     = true
+	floor.CanCollide   = true
+	floor.Transparency = 0.8
+	floor.Color        = Color3.fromRGB(15, 15, 15)
+	floor.CastShadow   = false
+	floor.Parent       = border
+
+	floor.Touched:Connect(function(hit)
+		local char = hit.Parent
+		local hum  = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then hum:TakeDamage(9999) end
+	end)
+end
+
 -- Destroys all generated island parts (called on round reset)
 function MapGenerator.clear(mapFolder)
 	local generated = mapFolder:FindFirstChild("Generated")
