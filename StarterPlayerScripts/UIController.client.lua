@@ -12,6 +12,8 @@ local PlayerRespawning   = RemoteEvents:WaitForChild("PlayerRespawning")
 local PlayerEliminated   = RemoteEvents:WaitForChild("PlayerEliminated")
 local AnchorDestroyed    = RemoteEvents:WaitForChild("AnchorDestroyed")
 local AnchorHealthUpdate = RemoteEvents:WaitForChild("AnchorHealthUpdate")
+local ArmorEquipped      = RemoteEvents:WaitForChild("ArmorEquipped")
+local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -114,6 +116,44 @@ anchorStatusLabel.TextColor3             = Color3.new(0.5, 1, 1)
 anchorStatusLabel.TextScaled             = true
 anchorStatusLabel.Font                   = Enum.Font.GothamBold
 anchorStatusLabel.Text                   = "Soul Crystal: NOT PLACED"
+
+-- ── Armor indicator (top-left) ──
+local armorFrame = Instance.new("Frame")
+armorFrame.Name                   = "ArmorFrame"
+armorFrame.Size                   = UDim2.new(0.18, 0, 0.055, 0)
+armorFrame.Position               = UDim2.new(0.01, 0, 0.52, 0)
+armorFrame.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
+armorFrame.BackgroundTransparency = 0.4
+armorFrame.Visible                = false
+armorFrame.Parent                 = screenGui
+Instance.new("UICorner", armorFrame).CornerRadius = UDim.new(0, 8)
+
+local armorLabel = Instance.new("TextLabel", armorFrame)
+armorLabel.Size                   = UDim2.fromScale(1, 1)
+armorLabel.BackgroundTransparency = 1
+armorLabel.TextColor3             = Color3.fromRGB(200, 200, 220)
+armorLabel.TextScaled             = true
+armorLabel.Font                   = Enum.Font.GothamBold
+armorLabel.Text                   = "Armor: None"
+
+-- ── Currency display (top-right, below round timer) ──
+local currencyFrame = Instance.new("Frame")
+currencyFrame.Name                   = "CurrencyFrame"
+currencyFrame.Size                   = UDim2.new(0.14, 0, 0.045, 0)
+currencyFrame.Position               = UDim2.new(0.84, 0, 0.03, 0)
+currencyFrame.BackgroundColor3       = Color3.fromRGB(255, 200, 0)
+currencyFrame.BackgroundTransparency = 0.3
+currencyFrame.Visible                = false
+currencyFrame.Parent                 = screenGui
+Instance.new("UICorner", currencyFrame).CornerRadius = UDim.new(0, 6)
+
+local currencyLabel = Instance.new("TextLabel", currencyFrame)
+currencyLabel.Size                   = UDim2.fromScale(1, 1)
+currencyLabel.BackgroundTransparency = 1
+currencyLabel.TextColor3             = Color3.fromRGB(60, 40, 0)
+currencyLabel.TextScaled             = true
+currencyLabel.Font                   = Enum.Font.GothamBold
+currencyLabel.Text                   = "$ 0"
 
 -- ── Respawn overlay ──
 local respawnFrame = Instance.new("Frame")
@@ -261,9 +301,11 @@ RoundStateChanged.OnClientEvent:Connect(function(state, data)
 	swapLabel.Visible    = isPlaying
 	roundLabel.Visible   = isPlaying
 	bigCountdown.Visible = false
-	hotbarFrame.Visible  = (isSetup or isPlaying)
-	winScreen.Visible    = isResults
-	anchorStatus.Visible = (isSetup or isPlaying)
+	hotbarFrame.Visible    = (isSetup or isPlaying)
+	winScreen.Visible      = isResults
+	anchorStatus.Visible   = (isSetup or isPlaying)
+	armorFrame.Visible     = (isSetup or isPlaying)
+	currencyFrame.Visible  = (isSetup or isPlaying)
 
 	if isLobby then
 		statusLabel.Text = (state == "COUNTDOWN") and "Game starting..." or "Waiting for players..."
@@ -370,6 +412,19 @@ PlayerEliminated.OnClientEvent:Connect(function(playerName)
 	else
 		showAnnouncement(playerName .. " has been ELIMINATED!", Color3.fromRGB(255, 120, 0), 3)
 	end
+end)
+
+-- Armor equipped notification
+ArmorEquipped.OnClientEvent:Connect(function(armorId, bonusHP)
+	armorLabel.Text      = string.format("Armor: %s (+%d HP)", armorId, bonusHP)
+	armorLabel.TextColor3 = armorId == "Iron"
+		and Color3.fromRGB(180, 185, 190)
+		or  Color3.fromRGB(150, 100, 60)
+end)
+
+-- Currency update
+UpdateCurrency.OnClientEvent:Connect(function(amount)
+	currencyLabel.Text = "$ " .. tostring(amount)
 end)
 
 -- ========== Hotbar updates from PlacementClient ==========

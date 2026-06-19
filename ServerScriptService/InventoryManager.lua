@@ -11,6 +11,10 @@ function InventoryManager.reset(player)
 	for id, count in pairs(GameConfig.STARTING_INVENTORY) do
 		inventories[player][id] = count
 	end
+	-- Seed armor slots at 0
+	for _, armorDef in ipairs(GameConfig.ARMOR_TYPES or {}) do
+		inventories[player][armorDef.id] = inventories[player][armorDef.id] or 0
+	end
 end
 
 function InventoryManager.get(player)

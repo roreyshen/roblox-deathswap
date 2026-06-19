@@ -22,7 +22,12 @@
         "AnchorDestroyed":    { "$className": "RemoteEvent" },
         "AnchorHealthUpdate": { "$className": "RemoteEvent" },
         "PlayerRespawning":   { "$className": "RemoteEvent" },
-        "PlayerEliminated":   { "$className": "RemoteEvent" }
+        "PlayerEliminated":   { "$className": "RemoteEvent" },
+        "EquipArmor":         { "$className": "RemoteEvent" },
+        "ArmorEquipped":      { "$className": "RemoteEvent" },
+        "UpdateCurrency":     { "$className": "RemoteEvent" },
+        "PurchaseItem":       { "$className": "RemoteEvent" },
+        "ShopResponse":       { "$className": "RemoteEvent" }
       }
     },
 

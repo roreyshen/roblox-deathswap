@@ -9,6 +9,7 @@ local InventoryManager = require(ServerScriptService.InventoryManager)
 local DataManager      = require(ServerScriptService.DataManager)
 local GameState        = require(ServerScriptService.GameState)
 local AnchorManager    = require(ServerScriptService.AnchorManager)
+local ArmorManager     = require(ServerScriptService.ArmorManager)
 
 local RemoteEvents       = ReplicatedStorage:WaitForChild("RemoteEvents")
 local SwapPlayers        = RemoteEvents:WaitForChild("SwapPlayers")
@@ -17,8 +18,22 @@ local UpdateTimers       = RemoteEvents:WaitForChild("UpdateTimers")
 local UpdateInventory    = RemoteEvents:WaitForChild("UpdateInventory")
 local PlayerRespawning   = RemoteEvents:WaitForChild("PlayerRespawning")
 local PlayerEliminated   = RemoteEvents:WaitForChild("PlayerEliminated")
+local EquipArmor         = RemoteEvents:WaitForChild("EquipArmor")
+local ArmorEquipped      = RemoteEvents:WaitForChild("ArmorEquipped")
 
 Players.CharacterAutoLoads = false
+
+-- ========== Armor equip handler ==========
+
+EquipArmor.OnServerEvent:Connect(function(player, armorId)
+	local inv = InventoryManager.get(player)
+	if not inv or (inv[armorId] or 0) < 1 then return end
+	if ArmorManager.equip(player, armorId) then
+		InventoryManager.deduct(player, armorId)
+		UpdateInventory:FireClient(player, InventoryManager.get(player))
+		ArmorEquipped:FireClient(player, armorId, ArmorManager.getBonusHP(player))
+	end
+end)
 
 -- ========== State ==========
 
@@ -126,6 +141,9 @@ end
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function()
 		connectDeath(player)
+		-- Re-apply armor stats after respawn (new character resets Humanoid)
+		task.wait(0.1)
+		ArmorManager.reapply(player)
 	end)
 end)
 
@@ -138,6 +156,7 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 	InventoryManager.clear(player)
 	AnchorManager.clear(player)
+	ArmorManager.clear(player)
 end)
 
 -- ========== Swap logic ==========
@@ -267,6 +286,7 @@ while true do
 	for _, player in ipairs(Players:GetPlayers()) do
 		InventoryManager.clear(player)
 		AnchorManager.clear(player)
+		ArmorManager.clear(player)
 		if player.Character then player.Character:Destroy() end
 	end
 end
