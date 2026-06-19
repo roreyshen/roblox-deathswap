@@ -134,6 +134,12 @@ PlaceBlock.OnServerEvent:Connect(function(player, clientPos, blockId)
 	part.CastShadow = true
 	part.Parent     = MapManager.getBuildsFolder()
 
+	-- Track who placed this block and its max HP
+	local maxHp = (GameConfig.BLOCK_HP and GameConfig.BLOCK_HP[blockId]) or 1
+	part:SetAttribute("PlacedBy", player.UserId)
+	part:SetAttribute("HP",       maxHp)
+	part:SetAttribute("MaxHP",    maxHp)
+
 	if blockDef.damagePer  then attachLavaDamage(part, blockDef.damagePer)      end
 	if blockDef.damageOnce then attachSpikeDamage(part, blockDef.damageOnce)    end
 	if blockDef.explode    then attachTNT(part)                                  end
@@ -157,10 +163,26 @@ RemoveBlock.OnServerEvent:Connect(function(player, targetPart)
 	if not root then return end
 	if (targetPart.Position - root.Position).Magnitude > GameConfig.PLACE_RANGE + 2 then return end
 
-	InventoryManager.refund(player, targetPart.Name, 1)
-	targetPart:Destroy()
+	local placedBy = targetPart:GetAttribute("PlacedBy")
 
-	UpdateInventory:FireClient(player, InventoryManager.get(player))
+	if placedBy == player.UserId then
+		-- Own block: instant remove with 50% refund
+		InventoryManager.refund(player, targetPart.Name, 1)
+		targetPart:Destroy()
+		UpdateInventory:FireClient(player, InventoryManager.get(player))
+	else
+		-- Enemy block: decrement HP; destroy only when HP reaches 0
+		local hp = (targetPart:GetAttribute("HP") or 1) - 1
+		if hp <= 0 then
+			targetPart:Destroy()
+		else
+			targetPart:SetAttribute("HP", hp)
+			-- Darken tint slightly to show damage
+			local maxHp = targetPart:GetAttribute("MaxHP") or 1
+			local pct   = hp / maxHp
+			targetPart.Color = targetPart.Color:Lerp(Color3.fromRGB(20, 20, 20), (1 - pct) * 0.4)
+		end
+	end
 end)
 
 -- ========== Soul Crystal placement (SETUP only) ==========
