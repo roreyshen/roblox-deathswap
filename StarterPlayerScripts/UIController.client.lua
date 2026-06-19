@@ -14,6 +14,9 @@ local AnchorDestroyed    = RemoteEvents:WaitForChild("AnchorDestroyed")
 local AnchorHealthUpdate = RemoteEvents:WaitForChild("AnchorHealthUpdate")
 local ArmorEquipped      = RemoteEvents:WaitForChild("ArmorEquipped")
 local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
+local OpenShop           = RemoteEvents:WaitForChild("OpenShop")
+local PurchaseItem       = RemoteEvents:WaitForChild("PurchaseItem")
+local ShopResponse       = RemoteEvents:WaitForChild("ShopResponse")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -154,6 +157,132 @@ currencyLabel.TextColor3             = Color3.fromRGB(60, 40, 0)
 currencyLabel.TextScaled             = true
 currencyLabel.Font                   = Enum.Font.GothamBold
 currencyLabel.Text                   = "$ 0"
+
+-- ── Shop Panel (center screen, shown on ProximityPrompt trigger) ──
+local shopPanel = Instance.new("Frame")
+shopPanel.Name                   = "ShopPanel"
+shopPanel.Size                   = UDim2.new(0, 320, 0, 400)
+shopPanel.Position               = UDim2.new(0.5, -160, 0.5, -200)
+shopPanel.BackgroundColor3       = Color3.fromRGB(25, 25, 35)
+shopPanel.BackgroundTransparency = 0.05
+shopPanel.Visible                = false
+shopPanel.ZIndex                 = 25
+shopPanel.Parent                 = screenGui
+Instance.new("UICorner", shopPanel).CornerRadius = UDim.new(0, 12)
+
+-- Shop header
+local shopHeader = Instance.new("TextLabel", shopPanel)
+shopHeader.Size                   = UDim2.new(1, -40, 0, 40)
+shopHeader.Position               = UDim2.new(0, 10, 0, 8)
+shopHeader.BackgroundTransparency = 1
+shopHeader.TextColor3             = Color3.fromRGB(255, 200, 40)
+shopHeader.TextScaled             = true
+shopHeader.Font                   = Enum.Font.GothamBold
+shopHeader.Text                   = "SHOP"
+shopHeader.ZIndex                 = 26
+
+-- Close button
+local shopClose = Instance.new("TextButton", shopPanel)
+shopClose.Size                   = UDim2.new(0, 30, 0, 30)
+shopClose.Position               = UDim2.new(1, -35, 0, 8)
+shopClose.BackgroundColor3       = Color3.fromRGB(180, 40, 40)
+shopClose.TextColor3             = Color3.new(1, 1, 1)
+shopClose.TextScaled             = true
+shopClose.Font                   = Enum.Font.GothamBold
+shopClose.Text                   = "X"
+shopClose.ZIndex                 = 26
+Instance.new("UICorner", shopClose).CornerRadius = UDim.new(0, 6)
+
+-- Balance display inside shop
+local shopBalanceLabel = Instance.new("TextLabel", shopPanel)
+shopBalanceLabel.Size                   = UDim2.new(1, -20, 0, 28)
+shopBalanceLabel.Position               = UDim2.new(0, 10, 0, 52)
+shopBalanceLabel.BackgroundTransparency = 1
+shopBalanceLabel.TextColor3             = Color3.fromRGB(255, 220, 80)
+shopBalanceLabel.TextScaled             = true
+shopBalanceLabel.Font                   = Enum.Font.Gotham
+shopBalanceLabel.Text                   = "Balance: $0"
+shopBalanceLabel.ZIndex                 = 26
+
+-- Feedback label (success/fail messages)
+local shopFeedback = Instance.new("TextLabel", shopPanel)
+shopFeedback.Size                   = UDim2.new(1, -20, 0, 24)
+shopFeedback.Position               = UDim2.new(0, 10, 1, -30)
+shopFeedback.BackgroundTransparency = 1
+shopFeedback.TextColor3             = Color3.fromRGB(100, 255, 100)
+shopFeedback.TextScaled             = true
+shopFeedback.Font                   = Enum.Font.Gotham
+shopFeedback.Text                   = ""
+shopFeedback.ZIndex                 = 26
+
+-- Scrolling item list
+local itemList = Instance.new("ScrollingFrame", shopPanel)
+itemList.Size                  = UDim2.new(1, -20, 0, 270)
+itemList.Position              = UDim2.new(0, 10, 0, 86)
+itemList.BackgroundTransparency= 1
+itemList.ScrollBarThickness    = 6
+itemList.CanvasSize            = UDim2.new(0, 0, 0, 0)
+itemList.ZIndex                = 26
+
+local listLayout = Instance.new("UIListLayout", itemList)
+listLayout.SortOrder    = Enum.SortOrder.LayoutOrder
+listLayout.Padding      = UDim.new(0, 6)
+
+-- Shop catalog (mirrors ShopManager.CATALOG)
+local SHOP_CATALOG = {
+	{ id = "Wood",     label = "Wood x10",    cost = 10  },
+	{ id = "Stone",    label = "Stone x10",   cost = 15  },
+	{ id = "Obsidian", label = "Obsidian x5", cost = 10  },
+	{ id = "Leather",  label = "Leather Armor (+20 HP)", cost = 50  },
+	{ id = "Iron",     label = "Iron Armor (+50 HP)",    cost = 120 },
+}
+
+local shopCurrentBalance = 0
+
+local function buildShopRows()
+	for _, entry in ipairs(SHOP_CATALOG) do
+		local row = Instance.new("Frame", itemList)
+		row.Size              = UDim2.new(1, -8, 0, 44)
+		row.BackgroundColor3  = Color3.fromRGB(40, 40, 55)
+		row.LayoutOrder       = 1
+		row.ZIndex            = 27
+		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+		local nameLabel = Instance.new("TextLabel", row)
+		nameLabel.Size                   = UDim2.new(0.65, 0, 1, 0)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.TextColor3             = Color3.new(1, 1, 1)
+		nameLabel.TextScaled             = true
+		nameLabel.Font                   = Enum.Font.Gotham
+		nameLabel.Text                   = entry.label
+		nameLabel.TextXAlignment         = Enum.TextXAlignment.Left
+		nameLabel.Position               = UDim2.new(0, 8, 0, 0)
+		nameLabel.ZIndex                 = 28
+
+		local buyBtn = Instance.new("TextButton", row)
+		buyBtn.Size             = UDim2.new(0, 90, 0, 30)
+		buyBtn.Position         = UDim2.new(1, -98, 0.5, -15)
+		buyBtn.BackgroundColor3 = Color3.fromRGB(50, 160, 60)
+		buyBtn.TextColor3       = Color3.new(1, 1, 1)
+		buyBtn.TextScaled       = true
+		buyBtn.Font             = Enum.Font.GothamBold
+		buyBtn.Text             = "$" .. entry.cost
+		buyBtn.ZIndex           = 28
+		Instance.new("UICorner", buyBtn).CornerRadius = UDim.new(0, 6)
+
+		buyBtn.MouseButton1Click:Connect(function()
+			PurchaseItem:FireServer(entry.id)
+		end)
+	end
+	-- Update canvas size
+	itemList.CanvasSize = UDim2.new(0, 0, 0, #SHOP_CATALOG * 50)
+end
+
+buildShopRows()
+
+shopClose.MouseButton1Click:Connect(function()
+	shopPanel.Visible = false
+end)
 
 -- ── Respawn overlay ──
 local respawnFrame = Instance.new("Frame")
@@ -307,6 +436,11 @@ RoundStateChanged.OnClientEvent:Connect(function(state, data)
 	armorFrame.Visible     = (isSetup or isPlaying)
 	currencyFrame.Visible  = (isSetup or isPlaying)
 
+	-- Close shop if transitioning away from active play
+	if isLobby or isResults then
+		shopPanel.Visible = false
+	end
+
 	if isLobby then
 		statusLabel.Text = (state == "COUNTDOWN") and "Game starting..." or "Waiting for players..."
 	elseif isSetup then
@@ -414,6 +548,22 @@ PlayerEliminated.OnClientEvent:Connect(function(playerName)
 	end
 end)
 
+-- Shop open trigger
+OpenShop.OnClientEvent:Connect(function(currentBalance)
+	shopCurrentBalance      = currentBalance or 0
+	shopBalanceLabel.Text   = "Balance: $" .. shopCurrentBalance
+	shopFeedback.Text       = ""
+	shopPanel.Visible       = true
+end)
+
+-- Shop purchase response
+ShopResponse.OnClientEvent:Connect(function(success, message)
+	shopFeedback.Text      = message or ""
+	shopFeedback.TextColor3 = success
+		and Color3.fromRGB(80, 255, 80)
+		or  Color3.fromRGB(255, 80, 80)
+end)
+
 -- Armor equipped notification
 ArmorEquipped.OnClientEvent:Connect(function(armorId, bonusHP)
 	armorLabel.Text      = string.format("Armor: %s (+%d HP)", armorId, bonusHP)
@@ -424,7 +574,11 @@ end)
 
 -- Currency update
 UpdateCurrency.OnClientEvent:Connect(function(amount)
-	currencyLabel.Text = "$ " .. tostring(amount)
+	currencyLabel.Text    = "$ " .. tostring(amount)
+	shopCurrentBalance    = amount
+	if shopPanel.Visible then
+		shopBalanceLabel.Text = "Balance: $" .. tostring(amount)
+	end
 end)
 
 -- ========== Hotbar updates from PlacementClient ==========
