@@ -11,6 +11,7 @@ local GameState        = require(ServerScriptService.GameState)
 local AnchorManager    = require(ServerScriptService.AnchorManager)
 local ArmorManager      = require(ServerScriptService.ArmorManager)
 local CurrencyManager   = require(ServerScriptService.CurrencyManager)
+local ShopManager       = require(ServerScriptService.ShopManager)
 
 local RemoteEvents       = ReplicatedStorage:WaitForChild("RemoteEvents")
 local SwapPlayers        = RemoteEvents:WaitForChild("SwapPlayers")
@@ -22,6 +23,9 @@ local PlayerEliminated   = RemoteEvents:WaitForChild("PlayerEliminated")
 local EquipArmor         = RemoteEvents:WaitForChild("EquipArmor")
 local ArmorEquipped      = RemoteEvents:WaitForChild("ArmorEquipped")
 local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
+
+-- Initialize shop purchase handler
+ShopManager.init(RemoteEvents, UpdateInventory, UpdateCurrency)
 
 Players.CharacterAutoLoads = false
 
