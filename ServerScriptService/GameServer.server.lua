@@ -24,6 +24,7 @@ local EquipArmor         = RemoteEvents:WaitForChild("EquipArmor")
 local ArmorEquipped      = RemoteEvents:WaitForChild("ArmorEquipped")
 local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
 local OpenShop           = RemoteEvents:WaitForChild("OpenShop")
+local StartTestMode      = RemoteEvents:WaitForChild("StartTestMode")
 
 -- Initialize shop purchase handler
 ShopManager.init(RemoteEvents, UpdateInventory, UpdateCurrency)
@@ -58,6 +59,81 @@ EquipArmor.OnServerEvent:Connect(function(player, armorId)
 	end
 end)
 
+-- ========== Test mode ==========
+
+local testModeActive = false
+local botSet         = {}  -- [Model] = true while alive
+
+local function spawnTestBot(spawnCF)
+	local model = Instance.new("Model")
+	model.Name  = "TestBot"
+
+	local hrp = Instance.new("Part")
+	hrp.Name         = "HumanoidRootPart"
+	hrp.Size         = Vector3.new(2, 2, 1)
+	hrp.Transparency = 1
+	hrp.CFrame       = spawnCF * CFrame.new(0, 5, 0)
+	hrp.Parent       = model
+	model.PrimaryPart = hrp
+
+	local torso = Instance.new("Part")
+	torso.Name   = "Torso"
+	torso.Size   = Vector3.new(2, 2, 1)
+	torso.Color  = Color3.fromRGB(180, 50, 50)
+	torso.CFrame = hrp.CFrame
+	torso.Parent = model
+	local wt = Instance.new("WeldConstraint")
+	wt.Part0 = hrp; wt.Part1 = torso; wt.Parent = hrp
+
+	local head = Instance.new("Part")
+	head.Name   = "Head"
+	head.Size   = Vector3.new(2, 1, 1)
+	head.Color  = Color3.fromRGB(255, 200, 150)
+	head.CFrame = torso.CFrame * CFrame.new(0, 1.5, 0)
+	head.Parent = model
+	local wh = Instance.new("WeldConstraint")
+	wh.Part0 = torso; wh.Part1 = head; wh.Parent = torso
+
+	-- Name tag
+	local gui = Instance.new("BillboardGui")
+	gui.Size        = UDim2.new(0, 120, 0, 40)
+	gui.StudsOffset = Vector3.new(0, 3.5, 0)
+	gui.Parent      = hrp
+	local lbl = Instance.new("TextLabel", gui)
+	lbl.Size                   = UDim2.fromScale(1, 1)
+	lbl.BackgroundTransparency = 1
+	lbl.TextColor3             = Color3.fromRGB(255, 80, 80)
+	lbl.TextScaled             = true
+	lbl.Font                   = Enum.Font.GothamBold
+	lbl.Text                   = "TEST BOT"
+
+	local hum = Instance.new("Humanoid")
+	hum.MaxHealth = 100
+	hum.Health    = 100
+	hum.Parent    = model
+
+	model.Parent = workspace
+
+	hum.Died:Connect(function()
+		botSet[model] = nil
+	end)
+
+	return model
+end
+
+local function clearBots()
+	for model in pairs(botSet) do
+		pcall(function() model:Destroy() end)
+	end
+	botSet = {}
+end
+
+StartTestMode.OnServerEvent:Connect(function()
+	if GameState.current ~= "LOBBY" then return end
+	if #Players:GetPlayers() < 1 then return end
+	testModeActive = true
+end)
+
 -- ========== State ==========
 
 local aliveSet      = {}  -- [Player] = true while alive this round
@@ -67,6 +143,7 @@ local deathConns    = {}  -- [Player] = RBXScriptConnection
 local function countAlive()
 	local n = 0
 	for _, v in pairs(aliveSet) do if v then n += 1 end end
+	for _, v in pairs(botSet)   do if v then n += 1 end end
 	return n
 end
 
@@ -188,28 +265,36 @@ end)
 -- ========== Swap logic ==========
 
 local function doSwap()
-	local alive = getAlivePlayers()
-	if #alive < 2 then return end
-
-	-- Capture positions RIGHT NOW (wherever each player is at this exact moment)
+	-- Build unified entity list (players + bots) so both participate in position rotation
+	local entities  = {}
 	local positions = {}
-	for i, player in ipairs(alive) do
-		local char = player.Character
-		if char and char.Parent and not respawningSet[player] then
-			positions[i] = char:GetPivot()
+
+	for _, p in ipairs(getAlivePlayers()) do
+		local char = p.Character
+		if char and char.Parent and not respawningSet[p] then
+			local capturedChar = char
+			table.insert(entities,  { move = function(cf) capturedChar:PivotTo(cf * CFrame.new(0, 3, 0)) end })
+			table.insert(positions, char:GetPivot())
 		else
-			-- Respawning / no char: send them to their anchor or a safe fallback
-			positions[i] = AnchorManager.getSpawnCF(player) or CFrame.new(0, 50, 0)
+			local fallback = AnchorManager.getSpawnCF(p) or CFrame.new(0, 50, 0)
+			table.insert(entities,  { move = function() end })
+			table.insert(positions, fallback)
 		end
 	end
 
-	-- Rotate: player[i] goes to position[i % n + 1]
-	for i, player in ipairs(alive) do
-		local char = player.Character
-		local dest = positions[i % #alive + 1]
-		if char and char.Parent and not respawningSet[player] then
-			char:PivotTo(dest * CFrame.new(0, 3, 0))
+	for model, isAlive in pairs(botSet) do
+		if isAlive then
+			local capturedModel = model
+			table.insert(entities,  { move = function(cf) capturedModel:PivotTo(cf * CFrame.new(0, 3, 0)) end })
+			table.insert(positions, model:GetPivot())
 		end
+	end
+
+	local n = #entities
+	if n < 2 then return end
+
+	for i, ent in ipairs(entities) do
+		ent.move(positions[i % n + 1])
 	end
 
 	SwapPlayers:FireAllClients()
@@ -223,7 +308,7 @@ local function setState(state, data)
 end
 
 local function waitForMinPlayers()
-	while #Players:GetPlayers() < GameConfig.MIN_PLAYERS do
+	while #Players:GetPlayers() < GameConfig.MIN_PLAYERS and not testModeActive do
 		task.wait(1)
 	end
 end
@@ -252,14 +337,24 @@ end
 while true do
 	-- LOBBY
 	setState("LOBBY")
+	testModeActive = false
+	clearBots()
 	waitForMinPlayers()
 
-	-- COUNTDOWN
+	-- COUNTDOWN (3-second express version for test mode)
 	setState("COUNTDOWN")
-	if not runLobbyCountdown() then continue end
+	if testModeActive then
+		for i = 3, 1, -1 do
+			UpdateTimers:FireAllClients(i, 0, 0)
+			task.wait(1)
+		end
+	else
+		if not runLobbyCountdown() then continue end
+	end
 
 	-- Reset world and generate a fresh random island
 	MapManager.reset()
+	clearBots()
 	MapManager.generate()
 	wireShopPrompts()
 	AnchorManager.clearAll()
@@ -268,6 +363,16 @@ while true do
 
 	-- Spawn everyone then give them 60 s to build and place Soul Crystals
 	spawnAllPlayers()
+
+	-- Spawn test bot at the last available spawn point
+	if testModeActive then
+		local cframes = MapManager.getSpawnCFrames()
+		if #cframes > 0 then
+			local botModel = spawnTestBot(cframes[#cframes])
+			botSet[botModel] = true
+		end
+	end
+
 	runSetupPhase()
 
 	-- PLAYING
@@ -310,6 +415,8 @@ while true do
 		DataManager.recordWin(survivors[1])
 	elseif #survivors > 1 then
 		winnerName = "Draw"
+	elseif next(botSet) ~= nil then
+		winnerName = "No one (bot survived)"
 	end
 
 	setState("RESULTS", winnerName)
@@ -322,4 +429,5 @@ while true do
 		ArmorManager.clear(player)
 		if player.Character then player.Character:Destroy() end
 	end
+	clearBots()
 end

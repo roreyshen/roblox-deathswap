@@ -28,7 +28,8 @@
         "UpdateCurrency":     { "$className": "RemoteEvent" },
         "PurchaseItem":       { "$className": "RemoteEvent" },
         "ShopResponse":       { "$className": "RemoteEvent" },
-        "OpenShop":           { "$className": "RemoteEvent" }
+        "OpenShop":           { "$className": "RemoteEvent" },
+        "StartTestMode":      { "$className": "RemoteEvent" }
       }
     },
 

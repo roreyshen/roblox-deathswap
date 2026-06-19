@@ -17,6 +17,7 @@ local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
 local OpenShop           = RemoteEvents:WaitForChild("OpenShop")
 local PurchaseItem       = RemoteEvents:WaitForChild("PurchaseItem")
 local ShopResponse       = RemoteEvents:WaitForChild("ShopResponse")
+local StartTestMode      = RemoteEvents:WaitForChild("StartTestMode")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -284,6 +285,26 @@ shopClose.MouseButton1Click:Connect(function()
 	shopPanel.Visible = false
 end)
 
+-- ── Test Mode button (visible in lobby only) ──
+local testButton = Instance.new("TextButton")
+testButton.Name                   = "TestModeButton"
+testButton.Size                   = UDim2.new(0, 200, 0, 50)
+testButton.Position               = UDim2.new(0.5, -100, 0.56, 0)
+testButton.BackgroundColor3       = Color3.fromRGB(50, 160, 50)
+testButton.TextColor3             = Color3.new(1, 1, 1)
+testButton.TextScaled             = true
+testButton.Font                   = Enum.Font.GothamBold
+testButton.Text                   = "TEST (Solo)"
+testButton.ZIndex                 = 5
+testButton.Parent                 = screenGui
+Instance.new("UICorner", testButton).CornerRadius = UDim.new(0, 10)
+
+testButton.MouseButton1Click:Connect(function()
+	StartTestMode:FireServer()
+	testButton.Text   = "Starting..."
+	testButton.Active = false
+end)
+
 -- ── Respawn overlay ──
 local respawnFrame = Instance.new("Frame")
 respawnFrame.Size                    = UDim2.fromScale(1, 1)
@@ -435,6 +456,7 @@ RoundStateChanged.OnClientEvent:Connect(function(state, data)
 	anchorStatus.Visible   = (isSetup or isPlaying)
 	armorFrame.Visible     = (isSetup or isPlaying)
 	currencyFrame.Visible  = (isSetup or isPlaying)
+	testButton.Visible     = (state == "LOBBY")
 
 	-- Close shop if transitioning away from active play
 	if isLobby or isResults then
@@ -442,7 +464,9 @@ RoundStateChanged.OnClientEvent:Connect(function(state, data)
 	end
 
 	if isLobby then
-		statusLabel.Text = (state == "COUNTDOWN") and "Game starting..." or "Waiting for players..."
+		statusLabel.Text  = (state == "COUNTDOWN") and "Game starting..." or "Waiting for players..."
+		testButton.Text   = "TEST (Solo)"
+		testButton.Active = true
 	elseif isSetup then
 		myAnchorAlive = false
 		anchorStatusLabel.Text       = "Soul Crystal: NOT PLACED"
