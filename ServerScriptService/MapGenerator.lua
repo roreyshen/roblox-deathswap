@@ -1,34 +1,180 @@
 -- ModuleScript: ServerScriptService > MapGenerator
--- Procedurally builds a randomized floating island each round.
+-- Procedurally builds a voxel-based floating island each round.
 local MapGenerator = {}
 
-local ISLAND_Y = 100  -- height of island base above void
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GameConfig = require(ReplicatedStorage:WaitForChild("GameConfig"))
 
-local function makePart(parent, name, size, position, color, material)
+local GRID    = GameConfig.GRID_SIZE          -- 4 studs per voxel
+local RADIUS  = GameConfig.ISLAND_RADIUS      -- 100 studs
+local BASE_Y  = GameConfig.ISLAND_Y           -- 100 (bottom of bedrock)
+local WALL_H  = GameConfig.TERRAIN_WALL_HEIGHT -- 12 studs
+
+local RVOX       = math.floor(RADIUS / GRID)  -- 25 voxels radius
+local SURFACE_Y  = BASE_Y + GRID * 4           -- 116: top of normal flat terrain
+
+local LAYER_DEFS = {
+	{ id = "Rock",  color = Color3.fromRGB(100, 100, 110), material = Enum.Material.SmoothPlastic },
+	{ id = "Dirt",  color = Color3.fromRGB(120, 80,  40),  material = Enum.Material.SmoothPlastic },
+	{ id = "Grass", color = Color3.fromRGB(90,  150, 60),  material = Enum.Material.Grass         },
+}
+local BEDROCK_COLOR = Color3.fromRGB(30, 30, 35)
+local BARRIER_COLOR = Color3.fromRGB(80, 120, 220)
+
+local HAT_COLORS = {
+	Color3.fromRGB(80, 40, 10),
+	Color3.fromRGB(20, 55, 110),
+	Color3.fromRGB(100, 20, 20),
+	Color3.fromRGB(25, 80, 30),
+	Color3.fromRGB(80, 65, 10),
+}
+
+local function makePart(parent, name, size, pos, color, material, transparency, canCollide)
 	local p = Instance.new("Part")
 	p.Name          = name
 	p.Size          = size
-	p.CFrame        = CFrame.new(position)
+	p.CFrame        = CFrame.new(pos)
 	p.Anchored      = true
-	p.CanCollide    = true
+	p.CanCollide    = canCollide ~= false
 	p.Color         = color
 	p.Material      = material or Enum.Material.SmoothPlastic
 	p.TopSurface    = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Transparency  = transparency or 0
+	p.CastShadow    = canCollide ~= false
 	p.Parent        = parent
 	return p
 end
 
--- Merchant hat colors (one per shop location)
-local HAT_COLORS = {
-	Color3.fromRGB(80, 40, 10),   -- dark brown
-	Color3.fromRGB(20, 55, 110),  -- dark blue
-	Color3.fromRGB(100, 20, 20),  -- dark red
-	Color3.fromRGB(25, 80, 30),   -- dark green
-	Color3.fromRGB(80, 65, 10),   -- dark gold
-}
+-- Voxel terrain: builds Bedrock + 3 mineable layers + optional hill bumps.
+-- Returns surfaceTop[gx][gz] = world Y of the top surface at that cell.
+local function buildVoxelTerrain(folder)
+	local BLOCK_HP = GameConfig.BLOCK_HP
+	local seed     = math.random() * 200
+	local n        = 0
+	local surfaceTop = {}
 
--- Builds a simple merchant NPC model at the given base CFrame (facing direction baked in).
+	for gx = -RVOX, RVOX do
+		surfaceTop[gx] = {}
+		for gz = -RVOX, RVOX do
+			if gx * gx + gz * gz <= RVOX * RVOX then
+				local wx = gx * GRID
+				local wz = gz * GRID
+
+				-- Bedrock (indestructible bottom layer)
+				local bpart = makePart(folder, "Bedrock",
+					Vector3.new(GRID, GRID, GRID),
+					Vector3.new(wx, BASE_Y + GRID / 2, wz),
+					BEDROCK_COLOR, Enum.Material.SmoothPlastic)
+				bpart:SetAttribute("IsBedrock",  true)
+				bpart:SetAttribute("BlockType",   "Bedrock")
+				n += 1
+
+				-- Three mineable layers (Rock, Dirt, Grass)
+				for li, layerDef in ipairs(LAYER_DEFS) do
+					local cy  = BASE_Y + GRID * li + GRID / 2
+					local hp  = BLOCK_HP[layerDef.id] or 1
+					local tp  = makePart(folder, layerDef.id,
+						Vector3.new(GRID, GRID, GRID),
+						Vector3.new(wx, cy, wz),
+						layerDef.color, layerDef.material)
+					tp:SetAttribute("IsTerrain", true)
+					tp:SetAttribute("BlockType",  layerDef.id)
+					tp:SetAttribute("HP",         hp)
+					tp:SetAttribute("MaxHP",      hp)
+					n += 1
+				end
+
+				-- Hill bumps: sine noise, avoid perimeter ring
+				local noise   = math.sin(gx * 0.35 + seed) * math.cos(gz * 0.35 + seed * 0.7)
+				local distSq  = gx * gx + gz * gz
+				local isHill  = noise > 0.60 and distSq < (RVOX - 4) * (RVOX - 4)
+				local hillExt = isHill and math.random(1, 2) or 0
+
+				local topAfterLayers = BASE_Y + GRID * 4  -- top of Grass = 116
+				for hi = 1, hillExt do
+					local hy = topAfterLayers + GRID * (hi - 1) + GRID / 2
+					local hp = BLOCK_HP["Grass"] or 1
+					local hp2 = makePart(folder, "GrassHill",
+						Vector3.new(GRID, GRID, GRID),
+						Vector3.new(wx, hy, wz),
+						LAYER_DEFS[3].color, LAYER_DEFS[3].material)
+					hp2:SetAttribute("IsTerrain", true)
+					hp2:SetAttribute("BlockType",  "Grass")
+					hp2:SetAttribute("HP",         hp)
+					hp2:SetAttribute("MaxHP",      hp)
+					n += 1
+				end
+
+				surfaceTop[gx][gz] = topAfterLayers + hillExt * GRID
+
+				if n % 200 == 0 then task.wait() end
+			end
+		end
+	end
+	return surfaceTop
+end
+
+-- Visible perimeter barrier (12 studs tall, semi-transparent blue)
+local function buildBarrier(folder)
+	local n = 0
+	local barrierY = SURFACE_Y + WALL_H / 2
+	for gx = -RVOX, RVOX do
+		for gz = -RVOX, RVOX do
+			local d2 = gx * gx + gz * gz
+			local onEdge = d2 <= RVOX * RVOX and (
+				(gx+1)*(gx+1)+gz*gz   > RVOX*RVOX or
+				(gx-1)*(gx-1)+gz*gz   > RVOX*RVOX or
+				gx*gx+(gz+1)*(gz+1)   > RVOX*RVOX or
+				gx*gx+(gz-1)*(gz-1)   > RVOX*RVOX
+			)
+			if onEdge then
+				local bp = makePart(folder, "Barrier",
+					Vector3.new(GRID, WALL_H, GRID),
+					Vector3.new(gx * GRID, barrierY, gz * GRID),
+					BARRIER_COLOR, Enum.Material.Neon, 0.35)
+				bp:SetAttribute("IsBarrier", true)
+				n += 1
+				if n % 50 == 0 then task.wait() end
+			end
+		end
+	end
+end
+
+-- Tree at world position (wx, topY, wz) — topY is the surface's top Y
+local function buildTree(folder, wx, topY, wz)
+	local BLOCK_HP = GameConfig.BLOCK_HP
+	local trunkH   = math.random(2, 3)
+
+	for i = 1, trunkH do
+		local tp = makePart(folder, "TreeTrunk",
+			Vector3.new(GRID, GRID, GRID),
+			Vector3.new(wx, topY + GRID * (i - 1) + GRID / 2, wz),
+			Color3.fromRGB(110, 70, 30), Enum.Material.Wood)
+		tp:SetAttribute("IsTerrain", true)
+		tp:SetAttribute("BlockType",  "Wood")
+		local hp = BLOCK_HP["Wood"] or 1
+		tp:SetAttribute("HP",         hp)
+		tp:SetAttribute("MaxHP",      hp)
+	end
+
+	local leafY  = topY + GRID * trunkH + GRID / 2
+	local leafHP = BLOCK_HP["Grass"] or 1
+	for dx = -1, 1 do
+		for dz = -1, 1 do
+			local lp = makePart(folder, "Leaf",
+				Vector3.new(GRID, GRID, GRID),
+				Vector3.new(wx + dx * GRID, leafY, wz + dz * GRID),
+				Color3.fromRGB(55, 110, 35), Enum.Material.Grass)
+			lp:SetAttribute("IsTerrain", true)
+			lp:SetAttribute("BlockType",  "Grass")
+			lp:SetAttribute("HP",         leafHP)
+			lp:SetAttribute("MaxHP",      leafHP)
+		end
+	end
+end
+
+-- Merchant NPC model
 local function buildMerchant(parent, baseCF, hatColor)
 	local model = Instance.new("Model")
 	model.Name  = "Merchant"
@@ -49,32 +195,18 @@ local function buildMerchant(parent, baseCF, hatColor)
 		return p
 	end
 
-	-- Legs (dark blue pants)
 	addPart("LeftLeg",  Vector3.new(0.9, 2.2, 0.9), Vector3.new(-0.5, 1.1, 0),  Color3.fromRGB(50, 55, 110))
 	addPart("RightLeg", Vector3.new(0.9, 2.2, 0.9), Vector3.new(0.5,  1.1, 0),  Color3.fromRGB(50, 55, 110))
-
-	-- Torso (brown tunic, non-collidable so it doesn't block block placement raycasts)
 	local torso = addPart("Torso", Vector3.new(2, 2.5, 1), Vector3.new(0, 3.35, 0), Color3.fromRGB(105, 65, 20))
-
-	-- Arms (cream sleeves)
 	addPart("LeftArm",  Vector3.new(0.8, 2.2, 0.8), Vector3.new(-1.4, 3.2, 0), Color3.fromRGB(200, 155, 80))
 	addPart("RightArm", Vector3.new(0.8, 2.2, 0.8), Vector3.new(1.4,  3.2, 0), Color3.fromRGB(200, 155, 80))
+	addPart("Head",     Vector3.new(1.8, 1.8, 1.8), Vector3.new(0,    5.5, 0),  Color3.fromRGB(255, 200, 140))
+	addPart("HatBrim",  Vector3.new(2.8, 0.4, 2.8), Vector3.new(0,   6.55, 0), hatColor)
+	addPart("HatTop",   Vector3.new(1.6, 1.6, 1.6), Vector3.new(0,   7.55, 0), hatColor)
+	addPart("EyeL",     Vector3.new(0.4, 0.4, 0.1), Vector3.new(-0.45, 5.6, -0.95), Color3.fromRGB(30, 20, 10))
+	addPart("EyeR",     Vector3.new(0.4, 0.4, 0.1), Vector3.new(0.45,  5.6, -0.95), Color3.fromRGB(30, 20, 10))
+	addPart("Smile",    Vector3.new(0.8, 0.2, 0.1), Vector3.new(0,   5.15, -0.95), Color3.fromRGB(110, 40, 40))
 
-	-- Head (skin)
-	addPart("Head", Vector3.new(1.8, 1.8, 1.8), Vector3.new(0, 5.5, 0), Color3.fromRGB(255, 200, 140))
-
-	-- Hat brim + top
-	addPart("HatBrim", Vector3.new(2.8, 0.4, 2.8), Vector3.new(0, 6.55, 0), hatColor)
-	addPart("HatTop",  Vector3.new(1.6, 1.6, 1.6), Vector3.new(0, 7.55, 0), hatColor)
-
-	-- Eyes (small dark squares on front face, local -Z = forward)
-	addPart("EyeL", Vector3.new(0.4, 0.4, 0.1), Vector3.new(-0.45, 5.6, -0.95), Color3.fromRGB(30, 20, 10))
-	addPart("EyeR", Vector3.new(0.4, 0.4, 0.1), Vector3.new(0.45,  5.6, -0.95), Color3.fromRGB(30, 20, 10))
-
-	-- Smile
-	addPart("Smile", Vector3.new(0.8, 0.2, 0.1), Vector3.new(0, 5.15, -0.95), Color3.fromRGB(110, 40, 40))
-
-	-- SHOP billboard above hat
 	local gui = Instance.new("BillboardGui")
 	gui.Size        = UDim2.new(0, 160, 0, 50)
 	gui.StudsOffset = Vector3.new(0, 5.5, 0)
@@ -82,8 +214,8 @@ local function buildMerchant(parent, baseCF, hatColor)
 	gui.Parent      = torso
 
 	local bg = Instance.new("Frame", gui)
-	bg.Size                  = UDim2.fromScale(1, 1)
-	bg.BackgroundColor3      = Color3.fromRGB(40, 20, 0)
+	bg.Size                   = UDim2.fromScale(1, 1)
+	bg.BackgroundColor3       = Color3.fromRGB(40, 20, 0)
 	bg.BackgroundTransparency = 0.15
 	Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
 
@@ -95,7 +227,6 @@ local function buildMerchant(parent, baseCF, hatColor)
 	lbl.Font                   = Enum.Font.GothamBold
 	lbl.Text                   = "SHOP"
 
-	-- ProximityPrompt on torso
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText            = "Open Shop"
 	prompt.ObjectText            = "Merchant"
@@ -108,65 +239,20 @@ local function buildMerchant(parent, baseCF, hatColor)
 	return model
 end
 
--- Builds island terrain parts into the Generated folder.
--- Returns the top surface Y of the island and the center position.
-local function buildIsland(generated, cx, cz, radius, stoneH, dirtH, grassH)
-	local totalH  = stoneH + dirtH + grassH
-	local stoneY  = ISLAND_Y + stoneH / 2
-	local dirtY   = ISLAND_Y + stoneH + dirtH / 2
-	local grassY  = ISLAND_Y + stoneH + dirtH + grassH / 2
-	local topY    = ISLAND_Y + totalH
-
-	-- Stone core (slightly wider for overhanging feel)
-	makePart(generated, "Stone",
-		Vector3.new(radius * 2, stoneH, radius * 2),
-		Vector3.new(cx, stoneY, cz),
-		Color3.fromRGB(105, 105, 105), Enum.Material.SmoothPlastic)
-
-	-- Dirt band
-	makePart(generated, "Dirt",
-		Vector3.new(radius * 2, dirtH, radius * 2),
-		Vector3.new(cx, dirtY, cz),
-		Color3.fromRGB(140, 100, 60), Enum.Material.SmoothPlastic)
-
-	-- Grass cap
-	makePart(generated, "Grass",
-		Vector3.new(radius * 2, grassH, radius * 2),
-		Vector3.new(cx, grassY, cz),
-		Color3.fromRGB(106, 127, 63), Enum.Material.Grass)
-
-	-- Tapered bottom (visual: makes it look like a floating island)
-	local taperH = math.floor(stoneH * 0.6)
-	makePart(generated, "StoneBase",
-		Vector3.new(radius * 1.2, taperH, radius * 1.2),
-		Vector3.new(cx, ISLAND_Y - taperH / 2, cz),
-		Color3.fromRGB(85, 85, 85), Enum.Material.SmoothPlastic)
-
-	return topY
-end
-
 function MapGenerator.generate(mapFolder)
-	-- Clear old generated parts
-	local existing = mapFolder:FindFirstChild("Generated")
-	if existing then existing:Destroy() end
-
-	-- Clear old center platform
-	local oldCenter = mapFolder:FindFirstChild("CenterPlatform")
-	if oldCenter then oldCenter:Destroy() end
-
-	-- Clear old spawn points
+	-- Clear previous round
+	for _, name in ipairs({"Generated", "CenterPlatform", "KillBorder", "Shops"}) do
+		local old = mapFolder:FindFirstChild(name)
+		if old then old:Destroy() end
+	end
 	local spawnFolder = mapFolder:FindFirstChild("SpawnPoints")
 	if not spawnFolder then
 		spawnFolder = Instance.new("Folder")
 		spawnFolder.Name   = "SpawnPoints"
 		spawnFolder.Parent = mapFolder
 	else
-		for _, child in ipairs(spawnFolder:GetChildren()) do
-			child:Destroy()
-		end
+		for _, c in ipairs(spawnFolder:GetChildren()) do c:Destroy() end
 	end
-
-	-- Ensure PlayerBuilds folder
 	if not mapFolder:FindFirstChild("PlayerBuilds") then
 		local pb = Instance.new("Folder")
 		pb.Name   = "PlayerBuilds"
@@ -177,67 +263,77 @@ function MapGenerator.generate(mapFolder)
 	generated.Name   = "Generated"
 	generated.Parent = mapFolder
 
-	-- Random island parameters
-	local radius  = math.random(100, 130)
-	local stoneH  = math.random(10, 16)
-	local dirtH   = math.random(3, 5)
-	local grassH  = 3
-	local cx, cz  = 0, 0  -- island centered at origin horizontally
+	-- Build voxel terrain
+	local surfaceTop = buildVoxelTerrain(generated)
 
-	local topY = buildIsland(generated, cx, cz, radius, stoneH, dirtH, grassH)
-	local platformY = topY + 1  -- spawn platforms sit on top surface
+	-- Build perimeter barrier
+	buildBarrier(generated)
 
-	-- 4 spawn platforms at cardinal directions (inset from island edge)
-	local spawnOffset = radius - 10
-	local spawnDirs = {
-		{name="Spawn1", dx=0,           dz=-spawnOffset},
-		{name="Spawn2", dx=spawnOffset, dz=0           },
-		{name="Spawn3", dx=0,           dz=spawnOffset },
-		{name="Spawn4", dx=-spawnOffset,dz=0           },
-	}
-
-	for _, sp in ipairs(spawnDirs) do
-		local part = makePart(spawnFolder, sp.name,
-			Vector3.new(40, 1, 40),
-			Vector3.new(cx + sp.dx, platformY, cz + sp.dz),
-			Color3.fromRGB(106, 155, 50), Enum.Material.Grass)
-		part.CanCollide = true
+	-- Scatter 12 trees (avoid center 20 studs and perimeter edge 3 voxels)
+	local treeCount   = 0
+	local treeAttempts = 0
+	while treeCount < 12 and treeAttempts < 200 do
+		treeAttempts += 1
+		local gx = math.random(-RVOX + 4, RVOX - 4)
+		local gz = math.random(-RVOX + 4, RVOX - 4)
+		local d2 = gx * gx + gz * gz
+		-- Within radius, not in center 5-voxel area, not on a hill (keep flat areas for trees)
+		if d2 <= (RVOX - 3) * (RVOX - 3) and d2 > 5 * 5 and surfaceTop[gx] and surfaceTop[gx][gz] then
+			local topY = surfaceTop[gx][gz]
+			buildTree(generated, gx * GRID, topY, gz * GRID)
+			-- Mark neighbors to avoid overlap
+			surfaceTop[gx][gz] = nil
+			treeCount += 1
+			task.wait()
+		end
 	end
 
-	-- Center platform (for the shop)
-	local centerPlatform = makePart(mapFolder, "CenterPlatform",
-		Vector3.new(80, 1, 80),
-		Vector3.new(cx, platformY, cz),
-		Color3.fromRGB(162, 162, 162), Enum.Material.SmoothPlastic)
-	centerPlatform.CanCollide = true
+	-- Spawn platforms (invisible anchors at cardinal positions on terrain surface)
+	local spawnR   = RVOX - 6  -- inset 6 voxels from edge
+	local spawnDirs = {
+		{ name = "Spawn1", gx =  0,      gz = -spawnR },
+		{ name = "Spawn2", gx =  spawnR, gz =  0      },
+		{ name = "Spawn3", gx =  0,      gz =  spawnR },
+		{ name = "Spawn4", gx = -spawnR, gz =  0      },
+	}
 
-	-- Merchant NPCs: one at each spawn platform (facing island center) + one at center
-	local shopFolder = mapFolder:FindFirstChild("Shops")
-	if shopFolder then shopFolder:Destroy() end
-	shopFolder = Instance.new("Folder")
+	local centerY = SURFACE_Y  -- flat center is always at surface level
+
+	for _, sp in ipairs(spawnDirs) do
+		local wx = sp.gx * GRID
+		local wz = sp.gz * GRID
+		local topY = (surfaceTop[sp.gx] and surfaceTop[sp.gx][sp.gz]) or SURFACE_Y
+		-- Visible spawn marker (small flat green disc)
+		local marker = makePart(spawnFolder, sp.name,
+			Vector3.new(20, 1, 20),
+			Vector3.new(wx, topY + 0.5, wz),
+			Color3.fromRGB(60, 200, 80), Enum.Material.Neon, 0.6)
+		marker.CanCollide = false
+	end
+
+	-- Kill border (insta-kill walls outside island)
+	MapGenerator.buildKillBorder(mapFolder, RADIUS + 20)
+
+	-- Merchant NPCs (one per spawn + one at center)
+	local shopFolder = Instance.new("Folder")
 	shopFolder.Name   = "Shops"
 	shopFolder.Parent = mapFolder
 
-	local islandCenter = Vector3.new(cx, platformY + 0.5, cz)
-
+	local islandCenter = Vector3.new(0, centerY + 0.5, 0)
 	for i, sp in ipairs(spawnDirs) do
-		local pos   = Vector3.new(cx + sp.dx, platformY + 0.5, cz + sp.dz)
-		local faceCF = CFrame.new(pos, islandCenter)  -- face toward island center
+		local pos    = Vector3.new(sp.gx * GRID, SURFACE_Y + 0.5, sp.gz * GRID)
+		local faceCF = CFrame.new(pos, islandCenter)
 		buildMerchant(shopFolder, faceCF, HAT_COLORS[i] or HAT_COLORS[1])
 	end
-
-	-- Center merchant faces default -Z direction
 	buildMerchant(shopFolder, CFrame.new(islandCenter), HAT_COLORS[5])
 
 	return {
-		islandCenter = Vector3.new(cx, platformY, cz),
-		topY         = topY,
-		radius       = radius,
+		islandCenter = Vector3.new(0, SURFACE_Y, 0),
+		topY         = SURFACE_Y,
+		radius       = RADIUS,
 	}
 end
 
--- Builds invisible kill-border walls + void kill floor around the island.
--- borderSize: half-extent of the square border (studs from center)
 function MapGenerator.buildKillBorder(mapFolder, borderSize)
 	local border = mapFolder:FindFirstChild("KillBorder")
 	if border then border:Destroy() end
@@ -245,77 +341,57 @@ function MapGenerator.buildKillBorder(mapFolder, borderSize)
 	border.Name   = "KillBorder"
 	border.Parent = mapFolder
 
-	local wallH  = 150  -- tall enough players can't jump over
-	local wallT  = 10   -- thickness
-	local wallY  = ISLAND_Y + wallH / 2
+	local wallH = 150
+	local wallT = 10
+	local wallY = BASE_Y + wallH / 2
 
-	-- Helper: create a kill wall that fires damage on touch
-	local function makeWall(name, size, position)
+	local function makeWall(name, size, pos)
 		local wall = Instance.new("Part")
-		wall.Name          = name
-		wall.Size          = size
-		wall.CFrame        = CFrame.new(position)
-		wall.Anchored      = true
-		wall.CanCollide    = true
-		wall.Transparency  = 1
-		wall.CastShadow    = false
-		wall.Parent        = border
-
+		wall.Name         = name
+		wall.Size         = size
+		wall.CFrame       = CFrame.new(pos)
+		wall.Anchored     = true
+		wall.CanCollide   = true
+		wall.Transparency = 1
+		wall.CastShadow   = false
+		wall.Parent       = border
 		wall.Touched:Connect(function(hit)
-			local char = hit.Parent
-			local hum  = char and char:FindFirstChildOfClass("Humanoid")
+			local hum = hit.Parent and hit.Parent:FindFirstChildOfClass("Humanoid")
 			if hum then hum:TakeDamage(9999) end
 		end)
 	end
 
 	local B = borderSize
-	makeWall("WallN", Vector3.new(B*2+wallT*2, wallH, wallT), Vector3.new(0, wallY, -B))
-	makeWall("WallS", Vector3.new(B*2+wallT*2, wallH, wallT), Vector3.new(0, wallY,  B))
-	makeWall("WallE", Vector3.new(wallT, wallH, B*2),         Vector3.new( B, wallY, 0))
-	makeWall("WallW", Vector3.new(wallT, wallH, B*2),         Vector3.new(-B, wallY, 0))
+	makeWall("WallN", Vector3.new(B*2+wallT*2, wallH, wallT), Vector3.new(0,  wallY, -B))
+	makeWall("WallS", Vector3.new(B*2+wallT*2, wallH, wallT), Vector3.new(0,  wallY,  B))
+	makeWall("WallE", Vector3.new(wallT, wallH, B*2),         Vector3.new( B, wallY,  0))
+	makeWall("WallW", Vector3.new(wallT, wallH, B*2),         Vector3.new(-B, wallY,  0))
 
-	-- Void kill floor far below island
 	local floor = Instance.new("Part")
 	floor.Name         = "VoidFloor"
 	floor.Size         = Vector3.new(B*2+100, 4, B*2+100)
-	floor.CFrame       = CFrame.new(0, ISLAND_Y - 80, 0)
+	floor.CFrame       = CFrame.new(0, BASE_Y - 80, 0)
 	floor.Anchored     = true
 	floor.CanCollide   = true
 	floor.Transparency = 0.8
 	floor.Color        = Color3.fromRGB(15, 15, 15)
 	floor.CastShadow   = false
 	floor.Parent       = border
-
 	floor.Touched:Connect(function(hit)
-		local char = hit.Parent
-		local hum  = char and char:FindFirstChildOfClass("Humanoid")
+		local hum = hit.Parent and hit.Parent:FindFirstChildOfClass("Humanoid")
 		if hum then hum:TakeDamage(9999) end
 	end)
 end
 
--- Destroys all generated island parts (called on round reset)
 function MapGenerator.clear(mapFolder)
-	local generated = mapFolder:FindFirstChild("Generated")
-	if generated then generated:Destroy() end
-
-	local oldCenter = mapFolder:FindFirstChild("CenterPlatform")
-	if oldCenter then oldCenter:Destroy() end
-
-	-- Clear spawn points (regenerated each round)
+	for _, name in ipairs({"Generated", "CenterPlatform", "KillBorder", "Shops"}) do
+		local obj = mapFolder:FindFirstChild(name)
+		if obj then obj:Destroy() end
+	end
 	local spawnFolder = mapFolder:FindFirstChild("SpawnPoints")
 	if spawnFolder then
-		for _, child in ipairs(spawnFolder:GetChildren()) do
-			child:Destroy()
-		end
+		for _, c in ipairs(spawnFolder:GetChildren()) do c:Destroy() end
 	end
-
-	-- Clear kill border
-	local border = mapFolder:FindFirstChild("KillBorder")
-	if border then border:Destroy() end
-
-	-- Clear shops
-	local shops = mapFolder:FindFirstChild("Shops")
-	if shops then shops:Destroy() end
 end
 
 return MapGenerator

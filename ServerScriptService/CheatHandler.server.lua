@@ -96,11 +96,15 @@ DevCheat.OnServerEvent:Connect(function(player, action, value)
 		end
 
 	elseif action == "setArmor" then
-		local armorId = tostring(value):lower()
-		if GameConfig.ARMOR_TYPES[armorId] then
-			ArmorManager.equip(player, armorId)
-			local info = GameConfig.ARMOR_TYPES[armorId]
-			ArmorEquipped:FireClient(player, armorId, info.bonusHP or 0)
+		local armorId = tostring(value)
+		-- ARMOR_TYPES is an array; find matching id case-insensitively
+		local def = nil
+		for _, entry in ipairs(GameConfig.ARMOR_TYPES) do
+			if entry.id:lower() == armorId:lower() then def = entry; break end
+		end
+		if def then
+			ArmorManager.equip(player, def.id)
+			ArmorEquipped:FireClient(player, def.id, def.bonusHP or 0)
 		end
 	end
 end)

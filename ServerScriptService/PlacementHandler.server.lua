@@ -18,7 +18,10 @@ local MineAnchor       = RemoteEvents:WaitForChild("MineAnchor")
 local AnchorDestroyed  = RemoteEvents:WaitForChild("AnchorDestroyed")
 local AnchorHealthUpdate = RemoteEvents:WaitForChild("AnchorHealthUpdate")
 
-local GRID = GameConfig.GRID_SIZE
+local GRID       = GameConfig.GRID_SIZE
+local RADIUS     = GameConfig.ISLAND_RADIUS or 100
+-- Max Y players can place blocks (surface Y + height limit)
+local MAX_PLACE_Y = GameConfig.ISLAND_Y + GameConfig.GRID_SIZE * 4 + (GameConfig.PLACE_HEIGHT_LIMIT or 40)
 
 -- ========== Helpers ==========
 
@@ -121,6 +124,11 @@ PlaceBlock.OnServerEvent:Connect(function(player, clientPos, blockId)
 	local snapped = snapToGrid(clientPos)
 
 	if (snapped - root.Position).Magnitude > GameConfig.PLACE_RANGE + 2 then return end
+
+	-- Height and radius limits
+	if snapped.Y > MAX_PLACE_Y then return end
+	if snapped.X * snapped.X + snapped.Z * snapped.Z > RADIUS * RADIUS then return end
+
 	if not isClear(snapped) then return end
 	if not InventoryManager.deduct(player, blockId) then return end
 
@@ -154,14 +162,35 @@ RemoveBlock.OnServerEvent:Connect(function(player, targetPart)
 	if state ~= "PLAYING" and state ~= "SETUP" then return end
 	if not targetPart or not targetPart:IsA("BasePart") then return end
 	if targetPart:GetAttribute("IsAnchor") then return end  -- use MineAnchor for crystals
-
-	local buildsFolder = MapManager.getBuildsFolder()
-	if not buildsFolder then return end
-	if not targetPart:IsDescendantOf(buildsFolder) then return end
+	if targetPart:GetAttribute("IsBarrier") then return end  -- perimeter barrier is indestructible
+	if targetPart:GetAttribute("IsBedrock") then return end  -- bedrock is indestructible
 
 	local root = getRoot(player)
 	if not root then return end
 	if (targetPart.Position - root.Position).Magnitude > GameConfig.PLACE_RANGE + 2 then return end
+
+	-- Terrain blocks (voxel island / trees) — HP-based, drop into inventory on destroy
+	if targetPart:GetAttribute("IsTerrain") then
+		local hp = (targetPart:GetAttribute("HP") or 1) - 1
+		if hp <= 0 then
+			local blockId = targetPart:GetAttribute("BlockType")
+			if blockId and getBlockDef(blockId) then
+				InventoryManager.add(player, blockId, 1)
+				UpdateInventory:FireClient(player, InventoryManager.get(player))
+			end
+			targetPart:Destroy()
+		else
+			targetPart:SetAttribute("HP", hp)
+			local maxHp = targetPart:GetAttribute("MaxHP") or 1
+			targetPart.Color = targetPart.Color:Lerp(Color3.fromRGB(20, 20, 20), ((maxHp - hp) / maxHp) * 0.5)
+		end
+		return
+	end
+
+	-- Player-placed blocks
+	local buildsFolder = MapManager.getBuildsFolder()
+	if not buildsFolder then return end
+	if not targetPart:IsDescendantOf(buildsFolder) then return end
 
 	local placedBy = targetPart:GetAttribute("PlacedBy")
 
@@ -171,13 +200,12 @@ RemoveBlock.OnServerEvent:Connect(function(player, targetPart)
 		targetPart:Destroy()
 		UpdateInventory:FireClient(player, InventoryManager.get(player))
 	else
-		-- Enemy block: decrement HP; destroy only when HP reaches 0
+		-- Enemy block: HP-based destruction
 		local hp = (targetPart:GetAttribute("HP") or 1) - 1
 		if hp <= 0 then
 			targetPart:Destroy()
 		else
 			targetPart:SetAttribute("HP", hp)
-			-- Darken tint slightly to show damage
 			local maxHp = targetPart:GetAttribute("MaxHP") or 1
 			local pct   = hp / maxHp
 			targetPart.Color = targetPart.Color:Lerp(Color3.fromRGB(20, 20, 20), (1 - pct) * 0.4)
