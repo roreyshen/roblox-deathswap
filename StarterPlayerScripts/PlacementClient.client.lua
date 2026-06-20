@@ -85,6 +85,15 @@ local function getTarget(extraExclude)
 	local char = player.Character
 	if not char then return nil end
 	local excludeList = { previewBlock, crystalPreview, char }
+	-- Exclude merchant NPCs and test bots so they don't intercept block placement
+	local map = workspace:FindFirstChild("Map")
+	if map then
+		local shops = map:FindFirstChild("Shops")
+		if shops then table.insert(excludeList, shops) end
+	end
+	for _, v in ipairs(workspace:GetChildren()) do
+		if v.Name == "TestBot" then table.insert(excludeList, v) end
+	end
 	if extraExclude then table.insert(excludeList, extraExclude) end
 	rayParams.FilterDescendantsInstances = excludeList
 
@@ -148,7 +157,10 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 -- Left-click: place block OR place anchor (SETUP)
-mouse.Button1Down:Connect(function()
+-- Using InputBegan so clicks on GUI elements (inventory slots) are ignored
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end  -- skip if clicking a GUI element
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 	if not canPlace then return end
 
 	if canPlaceAnchor and not anchorPlaced then
@@ -240,3 +252,15 @@ invEvent.Parent = player
 local anchorStatusEvent = Instance.new("BindableEvent")
 anchorStatusEvent.Name   = "AnchorStatusChanged"
 anchorStatusEvent.Parent = player
+
+-- UIController fires this when player clicks an inventory slot
+local selectSlotEvent = Instance.new("BindableEvent")
+selectSlotEvent.Name   = "SelectSlot"
+selectSlotEvent.Parent = player
+
+selectSlotEvent.Event:Connect(function(slot)
+	selectedSlot = slot
+	updatePreviewBlock()
+	local selChanged = player:FindFirstChild("SelectedSlotChanged")
+	if selChanged then selChanged:Fire(selectedSlot) end
+end)

@@ -53,8 +53,8 @@ local function buildMerchant(parent, baseCF, hatColor)
 	addPart("LeftLeg",  Vector3.new(0.9, 2.2, 0.9), Vector3.new(-0.5, 1.1, 0),  Color3.fromRGB(50, 55, 110))
 	addPart("RightLeg", Vector3.new(0.9, 2.2, 0.9), Vector3.new(0.5,  1.1, 0),  Color3.fromRGB(50, 55, 110))
 
-	-- Torso (brown tunic, collidable so ProximityPrompt is reachable)
-	local torso = addPart("Torso", Vector3.new(2, 2.5, 1), Vector3.new(0, 3.35, 0), Color3.fromRGB(105, 65, 20), true)
+	-- Torso (brown tunic, non-collidable so it doesn't block block placement raycasts)
+	local torso = addPart("Torso", Vector3.new(2, 2.5, 1), Vector3.new(0, 3.35, 0), Color3.fromRGB(105, 65, 20))
 
 	-- Arms (cream sleeves)
 	addPart("LeftArm",  Vector3.new(0.8, 2.2, 0.8), Vector3.new(-1.4, 3.2, 0), Color3.fromRGB(200, 155, 80))
@@ -177,18 +177,18 @@ function MapGenerator.generate(mapFolder)
 	generated.Name   = "Generated"
 	generated.Parent = mapFolder
 
-	-- Random island parameters (large scale)
-	local radius  = math.random(350, 550)
-	local stoneH  = math.random(15, 25)
-	local dirtH   = math.random(4, 8)
-	local grassH  = 5
+	-- Random island parameters
+	local radius  = math.random(100, 130)
+	local stoneH  = math.random(10, 16)
+	local dirtH   = math.random(3, 5)
+	local grassH  = 3
 	local cx, cz  = 0, 0  -- island centered at origin horizontally
 
 	local topY = buildIsland(generated, cx, cz, radius, stoneH, dirtH, grassH)
 	local platformY = topY + 1  -- spawn platforms sit on top surface
 
 	-- 4 spawn platforms at cardinal directions (inset from island edge)
-	local spawnOffset = radius - 20
+	local spawnOffset = radius - 10
 	local spawnDirs = {
 		{name="Spawn1", dx=0,           dz=-spawnOffset},
 		{name="Spawn2", dx=spawnOffset, dz=0           },

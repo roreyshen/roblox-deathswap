@@ -361,51 +361,89 @@ winLabel.TextColor3             = Color3.new(1, 1, 0)
 winLabel.TextScaled             = true
 winLabel.Font                   = Enum.Font.GothamBold
 
--- ── Hotbar (bottom-center) ──
+-- ── Hotbar (bottom-center, clickable slots) ──
+local SLOT_SIZE = 74
+local SLOT_GAP  = 5
+local numSlots  = #BLOCK_TYPES
+
 local hotbarFrame = Instance.new("Frame")
 hotbarFrame.Name                   = "HotbarFrame"
-hotbarFrame.Size                   = UDim2.new(0, #BLOCK_TYPES * 70, 0, 70)
-hotbarFrame.Position               = UDim2.new(0.5, -#BLOCK_TYPES * 35, 1, -90)
+hotbarFrame.Size                   = UDim2.new(0, numSlots * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP, 0, SLOT_SIZE)
+hotbarFrame.Position               = UDim2.new(0.5, -math.floor(numSlots * (SLOT_SIZE + SLOT_GAP) / 2), 1, -(SLOT_SIZE + 14))
 hotbarFrame.BackgroundTransparency = 1
 hotbarFrame.Visible                = false
 hotbarFrame.Parent                 = screenGui
 
-local slotFrames  = {}
-local countLabels = {}
+local slotFrames   = {}
+local slotSwatches = {}
+local countLabels  = {}
 
 for i, blockDef in ipairs(BLOCK_TYPES) do
-	local slot = Instance.new("Frame")
-	slot.Size            = UDim2.new(0, 62, 0, 62)
-	slot.Position        = UDim2.new(0, (i - 1) * 70, 0, 0)
-	slot.BackgroundColor3 = blockDef.color
-	slot.BorderSizePixel = 3
-	slot.Parent          = hotbarFrame
-	Instance.new("UICorner", slot).CornerRadius = UDim.new(0, 6)
+	local slot = Instance.new("TextButton")
+	slot.Name             = "Slot" .. i
+	slot.Size             = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
+	slot.Position         = UDim2.new(0, (i - 1) * (SLOT_SIZE + SLOT_GAP), 0, 0)
+	slot.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+	slot.BorderSizePixel  = 0
+	slot.Text             = ""
+	slot.AutoButtonColor  = false
+	slot.Parent           = hotbarFrame
+	Instance.new("UICorner", slot).CornerRadius = UDim.new(0, 8)
 
+	local stroke = Instance.new("UIStroke", slot)
+	stroke.Color     = Color3.fromRGB(65, 65, 65)
+	stroke.Thickness = 2
+
+	-- Block color swatch
+	local swatch = Instance.new("Frame", slot)
+	swatch.Size             = UDim2.new(1, -10, 0, SLOT_SIZE - 28)
+	swatch.Position         = UDim2.new(0, 5, 0, 5)
+	swatch.BackgroundColor3 = blockDef.color
+	swatch.BorderSizePixel  = 0
+	Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 4)
+
+	-- Count (top-right corner)
+	local countLabel = Instance.new("TextLabel", slot)
+	countLabel.Size                   = UDim2.new(0, 28, 0, 18)
+	countLabel.Position               = UDim2.new(1, -30, 0, 4)
+	countLabel.BackgroundTransparency = 1
+	countLabel.TextColor3             = Color3.new(1, 1, 1)
+	countLabel.TextScaled             = true
+	countLabel.Font                   = Enum.Font.GothamBold
+	countLabel.Text                   = "0"
+
+	-- Key number (top-left corner)
+	local keyLabel = Instance.new("TextLabel", slot)
+	keyLabel.Size                   = UDim2.new(0, 14, 0, 14)
+	keyLabel.Position               = UDim2.new(0, 4, 0, 4)
+	keyLabel.BackgroundTransparency = 1
+	keyLabel.TextColor3             = Color3.fromRGB(170, 170, 170)
+	keyLabel.TextScaled             = true
+	keyLabel.Font                   = Enum.Font.Gotham
+	keyLabel.Text                   = tostring(i)
+
+	-- Block name (bottom strip)
 	local nameLabel = Instance.new("TextLabel", slot)
-	nameLabel.Size                   = UDim2.new(1, 0, 0.5, 0)
+	nameLabel.Size                   = UDim2.new(1, -4, 0, 18)
+	nameLabel.Position               = UDim2.new(0, 2, 1, -20)
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.TextColor3             = Color3.new(1, 1, 1)
+	nameLabel.TextColor3             = Color3.fromRGB(210, 210, 210)
 	nameLabel.TextScaled             = true
 	nameLabel.Font                   = Enum.Font.GothamBold
 	nameLabel.Text                   = blockDef.id
 
-	local countLabel = Instance.new("TextLabel", slot)
-	countLabel.Size                   = UDim2.new(1, 0, 0.5, 0)
-	countLabel.Position               = UDim2.new(0, 0, 0.5, 0)
-	countLabel.BackgroundTransparency = 1
-	countLabel.TextColor3             = Color3.new(1, 1, 1)
-	countLabel.TextScaled             = true
-	countLabel.Font                   = Enum.Font.Gotham
-	countLabel.Text                   = "0"
-
-	slotFrames[i]  = slot
-	countLabels[i] = countLabel
+	slotFrames[i]   = slot
+	slotSwatches[i] = swatch
+	countLabels[i]  = countLabel
 end
 
 local function highlightSlot(index)
-	for i, frame in ipairs(slotFrames) do
-		frame.BorderColor3 = (i == index) and Color3.new(1, 1, 1) or Color3.fromRGB(80, 80, 80)
+	for i, slot in ipairs(slotFrames) do
+		local stroke = slot:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color     = (i == index) and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(65, 65, 65)
+			stroke.Thickness = (i == index) and 3 or 2
+		end
 	end
 end
 highlightSlot(1)
@@ -608,15 +646,31 @@ end)
 -- ========== Hotbar updates from PlacementClient ==========
 
 task.spawn(function()
-	local invEvent  = player:WaitForChild("InventoryChanged",    10)
-	local slotEvent = player:WaitForChild("SelectedSlotChanged", 10)
+	local invEvent      = player:WaitForChild("InventoryChanged",    10)
+	local slotEvent     = player:WaitForChild("SelectedSlotChanged", 10)
+	local selectSlotEvt = player:WaitForChild("SelectSlot",          10)
+
+	-- Wire inventory slot clicks → PlacementClient via SelectSlot BindableEvent
+	if selectSlotEvt then
+		for i, slot in ipairs(slotFrames) do
+			local capturedI = i
+			slot.MouseButton1Click:Connect(function()
+				selectSlotEvt:Fire(capturedI)
+			end)
+		end
+	end
 
 	if invEvent then
 		invEvent.Event:Connect(function(inv)
 			for i, blockDef in ipairs(BLOCK_TYPES) do
 				local count = inv[blockDef.id] or 0
-				countLabels[i].Text                     = tostring(count)
-				slotFrames[i].BackgroundTransparency    = count == 0 and 0.6 or 0
+				countLabels[i].Text      = tostring(count)
+				countLabels[i].TextColor3 = count == 0
+					and Color3.fromRGB(110, 110, 110)
+					or  Color3.new(1, 1, 1)
+				if slotSwatches[i] then
+					slotSwatches[i].BackgroundTransparency = count == 0 and 0.55 or 0
+				end
 			end
 		end)
 	end

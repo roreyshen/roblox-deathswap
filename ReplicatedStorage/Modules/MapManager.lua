@@ -13,7 +13,7 @@ local function getGenerator()
 	return MapGenerator
 end
 
-local BORDER_SIZE = 800  -- studs from center to kill-wall
+local BORDER_SIZE = 300  -- studs from center to kill-wall
 
 local function getMapFolder()
 	local map = workspace:FindFirstChild("Map")
