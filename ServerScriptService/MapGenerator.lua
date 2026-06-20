@@ -19,6 +19,95 @@ local function makePart(parent, name, size, position, color, material)
 	return p
 end
 
+-- Merchant hat colors (one per shop location)
+local HAT_COLORS = {
+	Color3.fromRGB(80, 40, 10),   -- dark brown
+	Color3.fromRGB(20, 55, 110),  -- dark blue
+	Color3.fromRGB(100, 20, 20),  -- dark red
+	Color3.fromRGB(25, 80, 30),   -- dark green
+	Color3.fromRGB(80, 65, 10),   -- dark gold
+}
+
+-- Builds a simple merchant NPC model at the given base CFrame (facing direction baked in).
+local function buildMerchant(parent, baseCF, hatColor)
+	local model = Instance.new("Model")
+	model.Name  = "Merchant"
+
+	local function addPart(name, size, localOffset, color, canCollide)
+		local p = Instance.new("Part")
+		p.Name          = name
+		p.Size          = size
+		p.CFrame        = baseCF * CFrame.new(localOffset)
+		p.Anchored      = true
+		p.CanCollide    = canCollide or false
+		p.Color         = color
+		p.Material      = Enum.Material.SmoothPlastic
+		p.TopSurface    = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.CastShadow    = false
+		p.Parent        = model
+		return p
+	end
+
+	-- Legs (dark blue pants)
+	addPart("LeftLeg",  Vector3.new(0.9, 2.2, 0.9), Vector3.new(-0.5, 1.1, 0),  Color3.fromRGB(50, 55, 110))
+	addPart("RightLeg", Vector3.new(0.9, 2.2, 0.9), Vector3.new(0.5,  1.1, 0),  Color3.fromRGB(50, 55, 110))
+
+	-- Torso (brown tunic, collidable so ProximityPrompt is reachable)
+	local torso = addPart("Torso", Vector3.new(2, 2.5, 1), Vector3.new(0, 3.35, 0), Color3.fromRGB(105, 65, 20), true)
+
+	-- Arms (cream sleeves)
+	addPart("LeftArm",  Vector3.new(0.8, 2.2, 0.8), Vector3.new(-1.4, 3.2, 0), Color3.fromRGB(200, 155, 80))
+	addPart("RightArm", Vector3.new(0.8, 2.2, 0.8), Vector3.new(1.4,  3.2, 0), Color3.fromRGB(200, 155, 80))
+
+	-- Head (skin)
+	addPart("Head", Vector3.new(1.8, 1.8, 1.8), Vector3.new(0, 5.5, 0), Color3.fromRGB(255, 200, 140))
+
+	-- Hat brim + top
+	addPart("HatBrim", Vector3.new(2.8, 0.4, 2.8), Vector3.new(0, 6.55, 0), hatColor)
+	addPart("HatTop",  Vector3.new(1.6, 1.6, 1.6), Vector3.new(0, 7.55, 0), hatColor)
+
+	-- Eyes (small dark squares on front face, local -Z = forward)
+	addPart("EyeL", Vector3.new(0.4, 0.4, 0.1), Vector3.new(-0.45, 5.6, -0.95), Color3.fromRGB(30, 20, 10))
+	addPart("EyeR", Vector3.new(0.4, 0.4, 0.1), Vector3.new(0.45,  5.6, -0.95), Color3.fromRGB(30, 20, 10))
+
+	-- Smile
+	addPart("Smile", Vector3.new(0.8, 0.2, 0.1), Vector3.new(0, 5.15, -0.95), Color3.fromRGB(110, 40, 40))
+
+	-- SHOP billboard above hat
+	local gui = Instance.new("BillboardGui")
+	gui.Size        = UDim2.new(0, 160, 0, 50)
+	gui.StudsOffset = Vector3.new(0, 5.5, 0)
+	gui.AlwaysOnTop = false
+	gui.Parent      = torso
+
+	local bg = Instance.new("Frame", gui)
+	bg.Size                  = UDim2.fromScale(1, 1)
+	bg.BackgroundColor3      = Color3.fromRGB(40, 20, 0)
+	bg.BackgroundTransparency = 0.15
+	Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
+
+	local lbl = Instance.new("TextLabel", bg)
+	lbl.Size                   = UDim2.fromScale(1, 1)
+	lbl.BackgroundTransparency = 1
+	lbl.TextColor3             = Color3.fromRGB(255, 220, 60)
+	lbl.TextScaled             = true
+	lbl.Font                   = Enum.Font.GothamBold
+	lbl.Text                   = "SHOP"
+
+	-- ProximityPrompt on torso
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText            = "Open Shop"
+	prompt.ObjectText            = "Merchant"
+	prompt.MaxActivationDistance = 15
+	prompt.HoldDuration          = 0
+	prompt.Parent                = torso
+
+	model.PrimaryPart = torso
+	model.Parent      = parent
+	return model
+end
+
 -- Builds island terrain parts into the Generated folder.
 -- Returns the top surface Y of the island and the center position.
 local function buildIsland(generated, cx, cz, radius, stoneH, dirtH, grassH)
@@ -122,55 +211,23 @@ function MapGenerator.generate(mapFolder)
 		Color3.fromRGB(162, 162, 162), Enum.Material.SmoothPlastic)
 	centerPlatform.CanCollide = true
 
-	-- Shop signs above each spawn platform + center platform
-	local shopPositions = {}
-	for _, sp in ipairs(spawnDirs) do
-		table.insert(shopPositions, Vector3.new(cx + sp.dx, platformY + 3, cz + sp.dz))
-	end
-	table.insert(shopPositions, Vector3.new(cx, platformY + 3, cz))  -- center shop
-
+	-- Merchant NPCs: one at each spawn platform (facing island center) + one at center
 	local shopFolder = mapFolder:FindFirstChild("Shops")
 	if shopFolder then shopFolder:Destroy() end
 	shopFolder = Instance.new("Folder")
 	shopFolder.Name   = "Shops"
 	shopFolder.Parent = mapFolder
 
-	for i, pos in ipairs(shopPositions) do
-		local sign = Instance.new("Part")
-		sign.Name         = "ShopSign" .. i
-		sign.Size         = Vector3.new(3, 4, 0.5)
-		sign.CFrame       = CFrame.new(pos)
-		sign.Anchored     = true
-		sign.CanCollide   = false
-		sign.Color        = Color3.fromRGB(240, 200, 40)
-		sign.Material     = Enum.Material.SmoothPlastic
-		sign.CastShadow   = false
-		sign:SetAttribute("IsShop", true)
-		sign.Parent       = shopFolder
+	local islandCenter = Vector3.new(cx, platformY + 0.5, cz)
 
-		-- Billboard label
-		local billboard = Instance.new("BillboardGui")
-		billboard.Size          = UDim2.new(0, 140, 0, 60)
-		billboard.StudsOffset   = Vector3.new(0, 3, 0)
-		billboard.AlwaysOnTop   = false
-		billboard.Parent        = sign
-
-		local label = Instance.new("TextLabel", billboard)
-		label.Size                   = UDim2.fromScale(1, 1)
-		label.BackgroundTransparency = 1
-		label.TextColor3             = Color3.fromRGB(40, 20, 0)
-		label.TextScaled             = true
-		label.Font                   = Enum.Font.GothamBold
-		label.Text                   = "🛒 SHOP\nPress E"
-
-		-- ProximityPrompt (server fires OpenShop to the triggering player)
-		local prompt = Instance.new("ProximityPrompt")
-		prompt.ActionText       = "Open Shop"
-		prompt.ObjectText       = "Shop"
-		prompt.MaxActivationDistance = 12
-		prompt.HoldDuration     = 0
-		prompt.Parent           = sign
+	for i, sp in ipairs(spawnDirs) do
+		local pos   = Vector3.new(cx + sp.dx, platformY + 0.5, cz + sp.dz)
+		local faceCF = CFrame.new(pos, islandCenter)  -- face toward island center
+		buildMerchant(shopFolder, faceCF, HAT_COLORS[i] or HAT_COLORS[1])
 	end
+
+	-- Center merchant faces default -Z direction
+	buildMerchant(shopFolder, CFrame.new(islandCenter), HAT_COLORS[5])
 
 	return {
 		islandCenter = Vector3.new(cx, platformY, cz),
