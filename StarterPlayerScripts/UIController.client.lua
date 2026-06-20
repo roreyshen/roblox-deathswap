@@ -20,6 +20,8 @@ local OpenShop           = RemoteEvents:WaitForChild("OpenShop")
 local PurchaseItem       = RemoteEvents:WaitForChild("PurchaseItem")
 local ShopResponse       = RemoteEvents:WaitForChild("ShopResponse")
 local StartTestMode      = RemoteEvents:WaitForChild("StartTestMode")
+local DevCheat           = RemoteEvents:WaitForChild("DevCheat")
+local UpdateGems         = RemoteEvents:WaitForChild("UpdateGems")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -986,3 +988,202 @@ task.spawn(function()
 		end)
 	end
 end)
+
+-- ========== DEV CHEAT PANEL (backtick ` to toggle) ==========
+do
+	local cheatGui = Instance.new("ScreenGui")
+	cheatGui.Name           = "CheatPanel"
+	cheatGui.ResetOnSpawn   = false
+	cheatGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	cheatGui.Parent         = playerGui
+
+	local panel = Instance.new("Frame")
+	panel.Name                  = "Panel"
+	panel.Size                  = UDim2.new(0, 280, 0, 310)
+	panel.Position              = UDim2.new(0, 10, 0.5, -155)
+	panel.BackgroundColor3      = Color3.fromRGB(20, 20, 30)
+	panel.BorderSizePixel       = 0
+	panel.Visible               = false
+	panel.Parent                = cheatGui
+	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+
+	-- Title bar (drag handle)
+	local titleBar = Instance.new("TextLabel")
+	titleBar.Name              = "TitleBar"
+	titleBar.Size              = UDim2.new(1, 0, 0, 32)
+	titleBar.BackgroundColor3  = Color3.fromRGB(80, 0, 140)
+	titleBar.BorderSizePixel   = 0
+	titleBar.Text              = "DEV PANEL  [ ` ]"
+	titleBar.TextColor3        = Color3.new(1, 1, 1)
+	titleBar.TextSize          = 14
+	titleBar.Font              = Enum.Font.GothamBold
+	titleBar.Parent            = panel
+	Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 8)
+
+	-- Dragging logic
+	local dragging, dragStart, startPos = false, nil, nil
+	titleBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging  = true
+			dragStart = input.Position
+			startPos  = panel.Position
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = input.Position - dragStart
+			panel.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	-- Row builder helper
+	local rowY = 40
+	local function addRow(labelText, action, placeholder)
+		local lbl = Instance.new("TextLabel")
+		lbl.Size              = UDim2.new(0, 80, 0, 24)
+		lbl.Position          = UDim2.new(0, 8, 0, rowY)
+		lbl.BackgroundTransparency = 1
+		lbl.Text              = labelText
+		lbl.TextColor3        = Color3.fromRGB(200, 200, 200)
+		lbl.TextSize          = 13
+		lbl.Font              = Enum.Font.Gotham
+		lbl.TextXAlignment    = Enum.TextXAlignment.Left
+		lbl.Parent            = panel
+
+		local box = Instance.new("TextBox")
+		box.Size              = UDim2.new(0, 110, 0, 24)
+		box.Position          = UDim2.new(0, 92, 0, rowY)
+		box.BackgroundColor3  = Color3.fromRGB(40, 40, 55)
+		box.BorderSizePixel   = 0
+		box.Text              = ""
+		box.PlaceholderText   = placeholder or "value"
+		box.TextColor3        = Color3.new(1, 1, 1)
+		box.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
+		box.TextSize          = 13
+		box.Font              = Enum.Font.Gotham
+		box.ClearTextOnFocus  = false
+		box.Parent            = panel
+		Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+
+		local btn = Instance.new("TextButton")
+		btn.Size             = UDim2.new(0, 56, 0, 24)
+		btn.Position         = UDim2.new(0, 210, 0, rowY)
+		btn.BackgroundColor3 = Color3.fromRGB(80, 0, 140)
+		btn.BorderSizePixel  = 0
+		btn.Text             = "Set"
+		btn.TextColor3       = Color3.new(1, 1, 1)
+		btn.TextSize         = 13
+		btn.Font             = Enum.Font.GothamBold
+		btn.Parent           = panel
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+		btn.MouseButton1Click:Connect(function()
+			DevCheat:FireServer(action, box.Text)
+		end)
+
+		rowY = rowY + 32
+		return box
+	end
+
+	addRow("Coins",  "setCoins", "0–99999")
+	addRow("Gems",   "setGems",  "0–99999")
+	addRow("HP",     "setHP",    "1–500")
+
+	-- Kit dropdown (cycling button)
+	local KITS = {"none","speed","jump","miner","healer","trapper"}
+	local kitIdx = 1
+	local kitLabel = Instance.new("TextLabel")
+	kitLabel.Size           = UDim2.new(0, 80, 0, 24)
+	kitLabel.Position       = UDim2.new(0, 8, 0, rowY)
+	kitLabel.BackgroundTransparency = 1
+	kitLabel.Text           = "Kit"
+	kitLabel.TextColor3     = Color3.fromRGB(200, 200, 200)
+	kitLabel.TextSize       = 13
+	kitLabel.Font           = Enum.Font.Gotham
+	kitLabel.TextXAlignment = Enum.TextXAlignment.Left
+	kitLabel.Parent         = panel
+
+	local kitBtn = Instance.new("TextButton")
+	kitBtn.Size            = UDim2.new(0, 166, 0, 24)
+	kitBtn.Position        = UDim2.new(0, 92, 0, rowY)
+	kitBtn.BackgroundColor3= Color3.fromRGB(40, 40, 55)
+	kitBtn.BorderSizePixel = 0
+	kitBtn.Text            = "none"
+	kitBtn.TextColor3      = Color3.new(1, 1, 1)
+	kitBtn.TextSize        = 13
+	kitBtn.Font            = Enum.Font.Gotham
+	kitBtn.Parent          = panel
+	Instance.new("UICorner", kitBtn).CornerRadius = UDim.new(0, 4)
+	kitBtn.MouseButton1Click:Connect(function()
+		kitIdx = (kitIdx % #KITS) + 1
+		kitBtn.Text = KITS[kitIdx]
+		DevCheat:FireServer("setKit", KITS[kitIdx])
+	end)
+	rowY = rowY + 32
+
+	-- Armor dropdown
+	local ARMORS = {"none","leather","iron"}
+	local armorIdx = 1
+	local armorLabel = Instance.new("TextLabel")
+	armorLabel.Size           = UDim2.new(0, 80, 0, 24)
+	armorLabel.Position       = UDim2.new(0, 8, 0, rowY)
+	armorLabel.BackgroundTransparency = 1
+	armorLabel.Text           = "Armor"
+	armorLabel.TextColor3     = Color3.fromRGB(200, 200, 200)
+	armorLabel.TextSize       = 13
+	armorLabel.Font           = Enum.Font.Gotham
+	armorLabel.TextXAlignment = Enum.TextXAlignment.Left
+	armorLabel.Parent         = panel
+
+	local armorBtn = Instance.new("TextButton")
+	armorBtn.Size            = UDim2.new(0, 166, 0, 24)
+	armorBtn.Position        = UDim2.new(0, 92, 0, rowY)
+	armorBtn.BackgroundColor3= Color3.fromRGB(40, 40, 55)
+	armorBtn.BorderSizePixel = 0
+	armorBtn.Text            = "none"
+	armorBtn.TextColor3      = Color3.new(1, 1, 1)
+	armorBtn.TextSize        = 13
+	armorBtn.Font            = Enum.Font.Gotham
+	armorBtn.Parent          = panel
+	Instance.new("UICorner", armorBtn).CornerRadius = UDim.new(0, 4)
+	armorBtn.MouseButton1Click:Connect(function()
+		armorIdx = (armorIdx % #ARMORS) + 1
+		armorBtn.Text = ARMORS[armorIdx]
+		DevCheat:FireServer("setArmor", ARMORS[armorIdx])
+	end)
+	rowY = rowY + 32
+
+	-- Status label
+	local statusLbl = Instance.new("TextLabel")
+	statusLbl.Size           = UDim2.new(1, -16, 0, 20)
+	statusLbl.Position       = UDim2.new(0, 8, 0, rowY)
+	statusLbl.BackgroundTransparency = 1
+	statusLbl.Text           = "Gems: 0"
+	statusLbl.TextColor3     = Color3.fromRGB(180, 130, 255)
+	statusLbl.TextSize       = 12
+	statusLbl.Font           = Enum.Font.Gotham
+	statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+	statusLbl.Parent         = panel
+
+	panel.Size = UDim2.new(0, 280, 0, rowY + 28)
+
+	-- Update gem display
+	UpdateGems.OnClientEvent:Connect(function(gems)
+		statusLbl.Text = "Gems: " .. gems
+	end)
+
+	-- Toggle with backtick
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.KeyCode == Enum.KeyCode.BackQuote then
+			panel.Visible = not panel.Visible
+		end
+	end)
+end

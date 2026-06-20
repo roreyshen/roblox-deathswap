@@ -29,14 +29,18 @@
         "PurchaseItem":       { "$className": "RemoteEvent" },
         "ShopResponse":       { "$className": "RemoteEvent" },
         "OpenShop":           { "$className": "RemoteEvent" },
-        "StartTestMode":      { "$className": "RemoteEvent" }
+        "StartTestMode":      { "$className": "RemoteEvent" },
+        "DevCheat":           { "$className": "RemoteEvent" },
+        "UpdateGems":         { "$className": "RemoteEvent" }
       }
     },
 
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "$path": "ServerScriptService",
-      "MapGenerator": { "$path": "ServerScriptService/MapGenerator.lua" }
+      "MapGenerator": { "$path": "ServerScriptService/MapGenerator.lua" },
+      "GemManager":   { "$path": "ServerScriptService/GemManager.lua" },
+      "CheatHandler": { "$path": "ServerScriptService/CheatHandler.server.lua" }
     },
 
     "StarterPlayer": {
