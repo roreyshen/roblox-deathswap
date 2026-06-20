@@ -88,18 +88,18 @@ function MapGenerator.generate(mapFolder)
 	generated.Name   = "Generated"
 	generated.Parent = mapFolder
 
-	-- Random island parameters
-	local radius  = math.random(35, 55)
-	local stoneH  = math.random(8, 14)
-	local dirtH   = math.random(2, 4)
-	local grassH  = 2
+	-- Random island parameters (large scale)
+	local radius  = math.random(350, 550)
+	local stoneH  = math.random(15, 25)
+	local dirtH   = math.random(4, 8)
+	local grassH  = 5
 	local cx, cz  = 0, 0  -- island centered at origin horizontally
 
 	local topY = buildIsland(generated, cx, cz, radius, stoneH, dirtH, grassH)
 	local platformY = topY + 1  -- spawn platforms sit on top surface
 
-	-- 4 spawn platforms at cardinal directions (at island edge)
-	local spawnOffset = radius - 4
+	-- 4 spawn platforms at cardinal directions (inset from island edge)
+	local spawnOffset = radius - 20
 	local spawnDirs = {
 		{name="Spawn1", dx=0,           dz=-spawnOffset},
 		{name="Spawn2", dx=spawnOffset, dz=0           },
@@ -109,7 +109,7 @@ function MapGenerator.generate(mapFolder)
 
 	for _, sp in ipairs(spawnDirs) do
 		local part = makePart(spawnFolder, sp.name,
-			Vector3.new(10, 1, 10),
+			Vector3.new(40, 1, 40),
 			Vector3.new(cx + sp.dx, platformY, cz + sp.dz),
 			Color3.fromRGB(106, 155, 50), Enum.Material.Grass)
 		part.CanCollide = true
@@ -117,7 +117,7 @@ function MapGenerator.generate(mapFolder)
 
 	-- Center platform (for the shop)
 	local centerPlatform = makePart(mapFolder, "CenterPlatform",
-		Vector3.new(14, 1, 14),
+		Vector3.new(80, 1, 80),
 		Vector3.new(cx, platformY, cz),
 		Color3.fromRGB(162, 162, 162), Enum.Material.SmoothPlastic)
 	centerPlatform.CanCollide = true
@@ -188,8 +188,8 @@ function MapGenerator.buildKillBorder(mapFolder, borderSize)
 	border.Name   = "KillBorder"
 	border.Parent = mapFolder
 
-	local wallH  = 60   -- tall enough players can't jump over
-	local wallT  = 4    -- thickness
+	local wallH  = 150  -- tall enough players can't jump over
+	local wallT  = 10   -- thickness
 	local wallY  = ISLAND_Y + wallH / 2
 
 	-- Helper: create a kill wall that fires damage on touch
