@@ -135,9 +135,10 @@ end)
 
 -- ========== State ==========
 
-local aliveSet      = {}  -- [Player] = true while alive this round
-local respawningSet = {}  -- [Player] = true while counting down to anchor respawn
-local deathConns    = {}  -- [Player] = RBXScriptConnection
+local aliveSet       = {}  -- [Player] = true while alive this round
+local respawningSet  = {}  -- [Player] = true while counting down to anchor respawn
+local deathConns     = {}  -- [Player] = RBXScriptConnection
+local playerSpawnCFs = {}  -- [Player] = CFrame of their assigned spawn platform this round
 
 local function countAlive()
 	local n = 0
@@ -182,6 +183,7 @@ local function spawnAllPlayers()
 		UpdateInventory:FireClient(player, InventoryManager.get(player))
 		UpdateCurrency:FireClient(player, CurrencyManager.get(player))
 		local cf = n > 0 and cframes[((i - 1) % n) + 1] or nil
+		playerSpawnCFs[player] = cf
 		spawnPlayer(player, cf)
 	end
 end
@@ -202,12 +204,16 @@ connectDeath = function(player)
 	if not hum then return end
 
 	deathConns[player] = hum.Died:Connect(function()
-		-- ---- SETUP phase: free respawn at a spawn point ----
+		-- ---- SETUP phase: respawn at anchor if placed, else at assigned spawn ----
 		if GameState.current == "SETUP" then
 			task.delay(2, function()
 				if aliveSet[player] == nil then return end
-				local cfs = MapManager.getSpawnCFrames()
-				local cf  = #cfs > 0 and cfs[math.random(1, #cfs)] or nil
+				local cf
+				if AnchorManager.hasAnchor(player) then
+					cf = AnchorManager.getSpawnCF(player)
+				else
+					cf = playerSpawnCFs[player]
+				end
 				spawnPlayer(player, cf)
 			end)
 			return
@@ -249,8 +255,9 @@ Players.PlayerAdded:Connect(function(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-	aliveSet[player]      = nil
-	respawningSet[player] = nil
+	aliveSet[player]       = nil
+	respawningSet[player]  = nil
+	playerSpawnCFs[player] = nil
 	if deathConns[player] then
 		deathConns[player]:Disconnect()
 		deathConns[player] = nil
@@ -357,8 +364,9 @@ while true do
 	MapManager.generate()
 	wireShopPrompts()
 	AnchorManager.clearAll()
-	aliveSet      = {}
-	respawningSet = {}
+	aliveSet       = {}
+	respawningSet  = {}
+	playerSpawnCFs = {}
 
 	-- Spawn everyone then give them 60 s to build and place Soul Crystals
 	spawnAllPlayers()
