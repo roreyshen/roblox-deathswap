@@ -8,6 +8,7 @@ local MapManager       = require(ReplicatedStorage:WaitForChild("MapManager"))
 local InventoryManager = require(ServerScriptService.InventoryManager)
 local GameState        = require(ServerScriptService.GameState)
 local AnchorManager    = require(ServerScriptService.AnchorManager)
+local ToolManager      = require(ServerScriptService.ToolManager)
 
 local RemoteEvents     = ReplicatedStorage:WaitForChild("RemoteEvents")
 local PlaceBlock       = RemoteEvents:WaitForChild("PlaceBlock")
@@ -171,7 +172,9 @@ RemoveBlock.OnServerEvent:Connect(function(player, targetPart)
 
 	-- Terrain blocks (voxel island / trees) — HP-based, drop into inventory on destroy
 	if targetPart:GetAttribute("IsTerrain") then
-		local hp = (targetPart:GetAttribute("HP") or 1) - 1
+		local mineMult = ToolManager.getMineMultiplier(player)
+		local dmg = math.max(1, math.floor(mineMult))
+		local hp  = (targetPart:GetAttribute("HP") or 1) - dmg
 		if hp <= 0 then
 			local blockId = targetPart:GetAttribute("BlockType")
 			if blockId and getBlockDef(blockId) then

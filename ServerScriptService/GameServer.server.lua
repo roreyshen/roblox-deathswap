@@ -9,9 +9,10 @@ local InventoryManager = require(ServerScriptService.InventoryManager)
 local DataManager      = require(ServerScriptService.DataManager)
 local GameState        = require(ServerScriptService.GameState)
 local AnchorManager    = require(ServerScriptService.AnchorManager)
-local ArmorManager      = require(ServerScriptService.ArmorManager)
-local CurrencyManager   = require(ServerScriptService.CurrencyManager)
-local ShopManager       = require(ServerScriptService.ShopManager)
+local ArmorManager     = require(ServerScriptService.ArmorManager)
+local CurrencyManager  = require(ServerScriptService.CurrencyManager)
+local ShopManager      = require(ServerScriptService.ShopManager)
+local ToolManager      = require(ServerScriptService.ToolManager)
 
 local RemoteEvents       = ReplicatedStorage:WaitForChild("RemoteEvents")
 local SwapPlayers        = RemoteEvents:WaitForChild("SwapPlayers")
@@ -182,6 +183,7 @@ local function spawnAllPlayers()
 		CurrencyManager.reset(player)
 		UpdateInventory:FireClient(player, InventoryManager.get(player))
 		UpdateCurrency:FireClient(player, CurrencyManager.get(player))
+		ToolManager.giveWeapons(player, "Wood", "Wood")
 		local cf = n > 0 and cframes[((i - 1) % n) + 1] or nil
 		playerSpawnCFs[player] = cf
 		spawnPlayer(player, cf)
@@ -222,8 +224,16 @@ connectDeath = function(player)
 		if GameState.current ~= "PLAYING" then return end
 		if not aliveSet[player] then return end  -- already eliminated
 
+		-- Drop weapons at death position for looting
+		local deathPos = Vector3.new(0, 120, 0)
+		local deathChar = player.Character
+		if deathChar and deathChar:FindFirstChild("HumanoidRootPart") then
+			deathPos = deathChar.HumanoidRootPart.Position
+		end
+		ToolManager.dropWeaponsAt(player, deathPos)
+
 		if AnchorManager.hasAnchor(player) then
-			-- Anchor respawn: delayed + lose 25 % of items
+			-- Anchor respawn: delayed + lose 25% of items
 			respawningSet[player] = true
 			InventoryManager.loseRandom(player, GameConfig.DEATH_LOSS_RATE)
 			UpdateInventory:FireClient(player, InventoryManager.get(player))
@@ -234,6 +244,7 @@ connectDeath = function(player)
 				if not aliveSet[player] then return end
 				local spawnCF = AnchorManager.getSpawnCF(player)
 				spawnPlayer(player, spawnCF)
+				ToolManager.giveWeapons(player, "Wood", "Wood")
 			end)
 		else
 			-- No anchor = permanent elimination

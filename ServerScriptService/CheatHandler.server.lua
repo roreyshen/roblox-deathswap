@@ -7,6 +7,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local CurrencyManager = require(ServerScriptService:WaitForChild("CurrencyManager"))
 local GemManager      = require(ServerScriptService:WaitForChild("GemManager"))
 local ArmorManager    = require(ServerScriptService:WaitForChild("ArmorManager"))
+local ToolManager     = require(ServerScriptService.ToolManager)
 
 local RemoteEvents  = ReplicatedStorage:WaitForChild("RemoteEvents")
 local DevCheat      = RemoteEvents:WaitForChild("DevCheat")

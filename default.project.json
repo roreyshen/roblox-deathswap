@@ -31,7 +31,8 @@
         "OpenShop":           { "$className": "RemoteEvent" },
         "StartTestMode":      { "$className": "RemoteEvent" },
         "DevCheat":           { "$className": "RemoteEvent" },
-        "UpdateGems":         { "$className": "RemoteEvent" }
+        "UpdateGems":         { "$className": "RemoteEvent" },
+        "SwordSwing":         { "$className": "RemoteEvent" }
       }
     },
 
@@ -39,8 +40,10 @@
       "$className": "ServerScriptService",
       "$path": "ServerScriptService",
       "MapGenerator": { "$path": "ServerScriptService/MapGenerator.lua" },
-      "GemManager":   { "$path": "ServerScriptService/GemManager.lua" },
-      "CheatHandler": { "$path": "ServerScriptService/CheatHandler.server.lua" }
+      "GemManager":    { "$path": "ServerScriptService/GemManager.lua" },
+      "CheatHandler":  { "$path": "ServerScriptService/CheatHandler.server.lua" },
+      "ToolManager":   { "$path": "ServerScriptService/ToolManager.lua" },
+      "ToolManagerInit": { "$path": "ServerScriptService/ToolManager.server.lua" }
     },
 
     "StarterPlayer": {
