@@ -78,9 +78,9 @@ return {
 		{ id = "Grass", yIndex = 3 },  -- top layer
 	},
 
-	-- Armor tiers: equip one at a time, grants bonus MaxHealth
+	-- Armor tiers: equip one at a time, reduces incoming damage by reduction (0–1)
 	ARMOR_TYPES = {
-		{ id = "Leather", bonusHP = 20, color = Color3.fromRGB(150, 100, 60),  cost = 50  },
-		{ id = "Iron",    bonusHP = 50, color = Color3.fromRGB(180, 185, 190), cost = 120 },
+		{ id = "Leather", reduction = 0.20, color = Color3.fromRGB(150, 100, 60),  cost = 50  },
+		{ id = "Iron",    reduction = 0.40, color = Color3.fromRGB(180, 185, 190), cost = 120 },
 	},
 }

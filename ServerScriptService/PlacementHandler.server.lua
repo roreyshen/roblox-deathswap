@@ -9,6 +9,8 @@ local InventoryManager = require(ServerScriptService.InventoryManager)
 local GameState        = require(ServerScriptService.GameState)
 local AnchorManager    = require(ServerScriptService.AnchorManager)
 local ToolManager      = require(ServerScriptService.ToolManager)
+local GemManager       = require(ServerScriptService.GemManager)
+local RoundStats       = require(ServerScriptService.RoundStats)
 
 local RemoteEvents     = ReplicatedStorage:WaitForChild("RemoteEvents")
 local PlaceBlock       = RemoteEvents:WaitForChild("PlaceBlock")
@@ -18,6 +20,7 @@ local PlaceAnchor      = RemoteEvents:WaitForChild("PlaceAnchor")
 local MineAnchor       = RemoteEvents:WaitForChild("MineAnchor")
 local AnchorDestroyed  = RemoteEvents:WaitForChild("AnchorDestroyed")
 local AnchorHealthUpdate = RemoteEvents:WaitForChild("AnchorHealthUpdate")
+local UpdateGems       = RemoteEvents:WaitForChild("UpdateGems")
 
 local GRID       = GameConfig.GRID_SIZE
 local RADIUS     = GameConfig.ISLAND_RADIUS or 100
@@ -153,6 +156,7 @@ PlaceBlock.OnServerEvent:Connect(function(player, clientPos, blockId)
 	if blockDef.damageOnce then attachSpikeDamage(part, blockDef.damageOnce)    end
 	if blockDef.explode    then attachTNT(part)                                  end
 
+	RoundStats.addBlock(player)
 	UpdateInventory:FireClient(player, InventoryManager.get(player))
 end)
 
@@ -252,11 +256,14 @@ MineAnchor.OnServerEvent:Connect(function(player, anchorPart)
 	AnchorHealthUpdate:FireAllClients(ownerUserId, hp, GameConfig.ANCHOR_MAX_HP)
 
 	if hp == 0 then
-		-- Find the owner's display name
 		local ownerName = "Unknown"
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p.UserId == ownerUserId then ownerName = p.Name; break end
 		end
 		AnchorDestroyed:FireAllClients(ownerUserId, ownerName)
+		-- Award 5 gems to the player who destroyed the crystal
+		local newGems = GemManager.add(player, 5)
+		RoundStats.addGems(player, 5)
+		UpdateGems:FireClient(player, newGems)
 	end
 end)

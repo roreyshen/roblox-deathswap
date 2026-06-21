@@ -13,6 +13,9 @@ local ArmorManager     = require(ServerScriptService.ArmorManager)
 local CurrencyManager  = require(ServerScriptService.CurrencyManager)
 local ShopManager      = require(ServerScriptService.ShopManager)
 local ToolManager      = require(ServerScriptService.ToolManager)
+local GemManager       = require(ServerScriptService.GemManager)
+local KitManager       = require(ServerScriptService.KitManager)
+local RoundStats       = require(ServerScriptService.RoundStats)
 
 local RemoteEvents       = ReplicatedStorage:WaitForChild("RemoteEvents")
 local SwapPlayers        = RemoteEvents:WaitForChild("SwapPlayers")
@@ -26,11 +29,31 @@ local ArmorEquipped      = RemoteEvents:WaitForChild("ArmorEquipped")
 local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
 local OpenShop           = RemoteEvents:WaitForChild("OpenShop")
 local StartTestMode      = RemoteEvents:WaitForChild("StartTestMode")
+local UpdateGems          = RemoteEvents:WaitForChild("UpdateGems")
+local PurchaseKit         = RemoteEvents:WaitForChild("PurchaseKit")
+local KitPurchaseResponse = RemoteEvents:WaitForChild("KitPurchaseResponse")
 
--- Initialize shop purchase handler
 ShopManager.init(RemoteEvents, UpdateInventory, UpdateCurrency)
 
--- Connects ProximityPrompt.Triggered on all shop signs in the map
+-- ========== Kit purchase handler ==========
+
+PurchaseKit.OnServerEvent:Connect(function(player, kitId)
+	if type(kitId) ~= "string" then return end
+	local def = KitManager.getDef(kitId)
+	if not def then
+		KitPurchaseResponse:FireClient(player, false, "Unknown kit.")
+		return
+	end
+	if not GemManager.deduct(player, def.cost) then
+		KitPurchaseResponse:FireClient(player, false, string.format("Need %d gems.", def.cost))
+		return
+	end
+	KitManager.setKit(player, kitId)
+	local newGems = GemManager.get(player)
+	UpdateGems:FireClient(player, newGems)
+	KitPurchaseResponse:FireClient(player, true, kitId .. " Kit equipped!")
+end)
+
 local function wireShopPrompts()
 	local map   = workspace:FindFirstChild("Map")
 	if not map then return end
@@ -55,14 +78,14 @@ EquipArmor.OnServerEvent:Connect(function(player, armorId)
 	if ArmorManager.equip(player, armorId) then
 		InventoryManager.deduct(player, armorId)
 		UpdateInventory:FireClient(player, InventoryManager.get(player))
-		ArmorEquipped:FireClient(player, armorId, ArmorManager.getBonusHP(player))
+		ArmorEquipped:FireClient(player, armorId, ArmorManager.getReduction(player))
 	end
 end)
 
 -- ========== Test mode ==========
 
 local testModeActive = false
-local botSet         = {}  -- [Model] = true while alive
+local botSet         = {}
 
 local function spawnTestBot(spawnCF)
 	local model = Instance.new("Model")
@@ -94,7 +117,6 @@ local function spawnTestBot(spawnCF)
 	local wh = Instance.new("WeldConstraint")
 	wh.Part0 = torso; wh.Part1 = head; wh.Parent = torso
 
-	-- Name tag
 	local gui = Instance.new("BillboardGui")
 	gui.Size        = UDim2.new(0, 120, 0, 40)
 	gui.StudsOffset = Vector3.new(0, 3.5, 0)
@@ -136,10 +158,11 @@ end)
 
 -- ========== State ==========
 
-local aliveSet       = {}  -- [Player] = true while alive this round
-local respawningSet  = {}  -- [Player] = true while counting down to anchor respawn
-local deathConns     = {}  -- [Player] = RBXScriptConnection
-local playerSpawnCFs = {}  -- [Player] = CFrame of their assigned spawn platform this round
+local aliveSet       = {}
+local respawningSet  = {}
+local deathConns     = {}
+local playerSpawnCFs = {}
+local lastSwapTime   = 0  -- tick() of most recent swap, for swap-kill bonus
 
 local function countAlive()
 	local n = 0
@@ -183,7 +206,9 @@ local function spawnAllPlayers()
 		CurrencyManager.reset(player)
 		UpdateInventory:FireClient(player, InventoryManager.get(player))
 		UpdateCurrency:FireClient(player, CurrencyManager.get(player))
+		UpdateGems:FireClient(player, GemManager.get(player))
 		ToolManager.giveWeapons(player, "Wood", "Wood")
+		KitManager.reapply(player)
 		local cf = n > 0 and cframes[((i - 1) % n) + 1] or nil
 		playerSpawnCFs[player] = cf
 		spawnPlayer(player, cf)
@@ -192,7 +217,7 @@ end
 
 -- ========== Death connection ==========
 
-local connectDeath  -- forward-declared so the closure below can reference it
+local connectDeath
 
 connectDeath = function(player)
 	if deathConns[player] then
@@ -206,7 +231,6 @@ connectDeath = function(player)
 	if not hum then return end
 
 	deathConns[player] = hum.Died:Connect(function()
-		-- ---- SETUP phase: respawn at anchor if placed, else at assigned spawn ----
 		if GameState.current == "SETUP" then
 			task.delay(2, function()
 				if aliveSet[player] == nil then return end
@@ -222,9 +246,8 @@ connectDeath = function(player)
 		end
 
 		if GameState.current ~= "PLAYING" then return end
-		if not aliveSet[player] then return end  -- already eliminated
+		if not aliveSet[player] then return end
 
-		-- Drop weapons at death position for looting
 		local deathPos = Vector3.new(0, 120, 0)
 		local deathChar = player.Character
 		if deathChar and deathChar:FindFirstChild("HumanoidRootPart") then
@@ -233,7 +256,6 @@ connectDeath = function(player)
 		ToolManager.dropWeaponsAt(player, deathPos)
 
 		if AnchorManager.hasAnchor(player) then
-			-- Anchor respawn: delayed + lose 25% of items
 			respawningSet[player] = true
 			InventoryManager.loseRandom(player, GameConfig.DEATH_LOSS_RATE)
 			UpdateInventory:FireClient(player, InventoryManager.get(player))
@@ -247,21 +269,35 @@ connectDeath = function(player)
 				ToolManager.giveWeapons(player, "Wood", "Wood")
 			end)
 		else
-			-- No anchor = permanent elimination
+			-- Permanent elimination
 			aliveSet[player] = false
 			DataManager.recordLoss(player)
 			PlayerEliminated:FireAllClients(player.Name)
+
+			-- Award 3 gems to all surviving players
+			for _, survivor in ipairs(getAlivePlayers()) do
+				local newGems = GemManager.add(survivor, 3)
+				RoundStats.addGems(survivor, 3)
+				UpdateGems:FireClient(survivor, newGems)
+			end
+
+			-- Swap-kill bonus: 25 coins if death happened within 5s of last swap
+			if tick() - lastSwapTime <= 5 then
+				for _, survivor in ipairs(getAlivePlayers()) do
+					local newBal = CurrencyManager.add(survivor, CurrencyManager.COINS_ON_SWAP_KILL)
+					UpdateCurrency:FireClient(survivor, newBal)
+				end
+			end
 		end
 	end)
 end
 
--- Re-hook on every new character (handles both round-start and anchor respawns)
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function()
 		connectDeath(player)
-		-- Re-apply armor stats after respawn (new character resets Humanoid)
 		task.wait(0.1)
 		ArmorManager.reapply(player)
+		KitManager.reapply(player)
 	end)
 end)
 
@@ -277,12 +313,12 @@ Players.PlayerRemoving:Connect(function(player)
 	AnchorManager.clear(player)
 	ArmorManager.clear(player)
 	CurrencyManager.clear(player)
+	KitManager.clearPlayer(player)
 end)
 
 -- ========== Swap logic ==========
 
 local function doSwap()
-	-- Build unified entity list (players + bots) so both participate in position rotation
 	local entities  = {}
 	local positions = {}
 
@@ -314,6 +350,7 @@ local function doSwap()
 		ent.move(positions[i % n + 1])
 	end
 
+	lastSwapTime = tick()
 	SwapPlayers:FireAllClients()
 end
 
@@ -352,13 +389,11 @@ end
 -- ========== Main game loop ==========
 
 while true do
-	-- LOBBY
 	setState("LOBBY")
 	testModeActive = false
 	clearBots()
 	waitForMinPlayers()
 
-	-- COUNTDOWN (3-second express version for test mode)
 	setState("COUNTDOWN")
 	if testModeActive then
 		for i = 3, 1, -1 do
@@ -369,20 +404,18 @@ while true do
 		if not runLobbyCountdown() then continue end
 	end
 
-	-- Reset world and generate a fresh random island
 	MapManager.reset()
 	clearBots()
 	MapManager.generate()
 	wireShopPrompts()
 	AnchorManager.clearAll()
+	RoundStats.reset()
 	aliveSet       = {}
 	respawningSet  = {}
 	playerSpawnCFs = {}
 
-	-- Spawn everyone then give them 60 s to build and place Soul Crystals
 	spawnAllPlayers()
 
-	-- Spawn test bot at the last available spawn point
 	if testModeActive then
 		local cframes = MapManager.getSpawnCFrames()
 		if #cframes > 0 then
@@ -393,7 +426,6 @@ while true do
 
 	runSetupPhase()
 
-	-- PLAYING
 	setState("PLAYING")
 
 	local swapTimer       = 0
@@ -409,7 +441,6 @@ while true do
 		local timeLeft   = GameConfig.ROUND_DURATION - roundTimer
 		UpdateTimers:FireAllClients(timeToSwap, timeLeft, 0)
 
-		-- Passive currency income for alive players
 		for _, p in ipairs(getAlivePlayers()) do
 			local newBal = CurrencyManager.add(p, CurrencyManager.COINS_PER_SECOND)
 			UpdateCurrency:FireClient(p, newBal)
@@ -425,16 +456,41 @@ while true do
 		end
 	end
 
-	-- RESULTS
+	-- RESULTS: award MVP gems and winner bonus
 	local survivors  = getAlivePlayers()
 	local winnerName = "No one"
+	local winner     = nil
+
 	if #survivors == 1 then
-		winnerName = survivors[1].Name
-		DataManager.recordWin(survivors[1])
+		winner     = survivors[1]
+		winnerName = winner.Name
+		DataManager.recordWin(winner)
 	elseif #survivors > 1 then
 		winnerName = "Draw"
 	elseif next(botSet) ~= nil then
 		winnerName = "No one (bot survived)"
+	end
+
+	-- MVP: most damage dealt
+	local mvpDmg = RoundStats.getMVP_Damage()
+	if mvpDmg then
+		local g = GemManager.add(mvpDmg, 2)
+		UpdateGems:FireClient(mvpDmg, g)
+	end
+
+	-- MVP: most blocks placed
+	local mvpBlocks = RoundStats.getMVP_Blocks()
+	if mvpBlocks and mvpBlocks ~= mvpDmg then
+		local g = GemManager.add(mvpBlocks, 2)
+		UpdateGems:FireClient(mvpBlocks, g)
+	end
+
+	-- Winner bonus: 5 gems flat + 25% of gems earned this round
+	if winner then
+		local roundGems = RoundStats.getTotalGems(winner)
+		local bonus     = 5 + math.floor(roundGems * 0.25)
+		local g = GemManager.add(winner, bonus)
+		UpdateGems:FireClient(winner, g)
 	end
 
 	setState("RESULTS", winnerName)

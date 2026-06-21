@@ -2,9 +2,12 @@
 -- Sword + Pickaxe tool creation, weapon gifting, mine-speed multipliers, loot drops.
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents")
 local SwordSwing   = RemoteEvents:WaitForChild("SwordSwing")
+
+local RoundStats   = require(ServerScriptService:WaitForChild("RoundStats"))
 
 local TIERS = {
 	Wood  = { swordDmg = 8,  mineMult = 1.5, color = Color3.fromRGB(160, 120, 60)  },
@@ -12,9 +15,9 @@ local TIERS = {
 	Iron  = { swordDmg = 16, mineMult = 3.0, color = Color3.fromRGB(180, 185, 190) },
 }
 
-local SWING_WINDOW = 0.5  -- seconds after activation where Touched counts as a hit
+local SWING_WINDOW = 0.5
 
-local activeSwings = {}   -- [Player] = { tier, expireTime }
+local activeSwings = {}  -- [Player] = { tier, expireTime }
 
 local ToolManager = {}
 
@@ -65,7 +68,6 @@ local function buildSword(tierName)
 	blade.Parent        = tool
 	weldTo(handle, blade, Vector3.new(0, 2.15, 0))
 
-	-- Server-side damage on Touched during swing window
 	handle.Touched:Connect(function(hit)
 		local char  = hit.Parent
 		local hum   = char and char:FindFirstChildOfClass("Humanoid")
@@ -75,7 +77,9 @@ local function buildSword(tierName)
 		if char == owner.Character then return end
 		local swing = activeSwings[owner]
 		if not swing or tick() > swing.expireTime then return end
-		hum:TakeDamage(TIERS[swing.tier] and TIERS[swing.tier].swordDmg or 8)
+		local dmg = TIERS[swing.tier] and TIERS[swing.tier].swordDmg or 8
+		hum:TakeDamage(dmg)
+		RoundStats.addDamage(owner, dmg)
 	end)
 
 	return tool
@@ -110,26 +114,32 @@ end
 
 -- ─── Public API ──────────────────────────────────────────────────────────────
 
+-- swordTier / pkTier: pass nil to leave existing weapon of that type unchanged
 function ToolManager.giveWeapons(player, swordTier, pkTier)
-	swordTier = swordTier or "Wood"
-	pkTier    = pkTier    or "Wood"
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	if not backpack then return end
 
-	for _, item in ipairs(backpack:GetChildren()) do
-		local wt = item:GetAttribute("WeaponType")
-		if wt == "Sword" or wt == "Pickaxe" then item:Destroy() end
-	end
-	local char = player.Character
-	if char then
-		for _, item in ipairs(char:GetChildren()) do
-			local wt = item:GetAttribute("WeaponType")
-			if wt == "Sword" or wt == "Pickaxe" then item:Destroy() end
+	-- Remove existing weapons of the requested types
+	local function clearType(wtype)
+		for _, item in ipairs(backpack:GetChildren()) do
+			if item:GetAttribute("WeaponType") == wtype then item:Destroy() end
+		end
+		local char = player.Character
+		if char then
+			for _, item in ipairs(char:GetChildren()) do
+				if item:GetAttribute("WeaponType") == wtype then item:Destroy() end
+			end
 		end
 	end
 
-	buildSword(swordTier).Parent    = backpack
-	buildPickaxe(pkTier).Parent     = backpack
+	if swordTier ~= nil then
+		clearType("Sword")
+		buildSword(swordTier or "Wood").Parent = backpack
+	end
+	if pkTier ~= nil then
+		clearType("Pickaxe")
+		buildPickaxe(pkTier or "Wood").Parent = backpack
+	end
 end
 
 function ToolManager.getMineMultiplier(player)

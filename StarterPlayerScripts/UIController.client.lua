@@ -27,6 +27,14 @@ local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local BLOCK_TYPES = GameConfig.BLOCK_TYPES
 
+-- Disable default Roblox health bar
+task.spawn(function()
+	task.wait()
+	pcall(function()
+		game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+	end)
+end)
+
 -- ========== Build the HUD ==========
 
 local screenGui = Instance.new("ScreenGui")
@@ -163,6 +171,25 @@ currencyLabel.TextScaled             = true
 currencyLabel.Font                   = Enum.Font.GothamBold
 currencyLabel.Text                   = "$ 0"
 
+-- ── Gem display (below coin display) ──
+local gemFrame = Instance.new("Frame")
+gemFrame.Name                   = "GemFrame"
+gemFrame.Size                   = UDim2.new(0.14, 0, 0.045, 0)
+gemFrame.Position               = UDim2.new(0.84, 0, 0.08, 0)
+gemFrame.BackgroundColor3       = Color3.fromRGB(160, 60, 220)
+gemFrame.BackgroundTransparency = 0.3
+gemFrame.Visible                = false
+gemFrame.Parent                 = screenGui
+Instance.new("UICorner", gemFrame).CornerRadius = UDim.new(0, 6)
+
+local gemLabel = Instance.new("TextLabel", gemFrame)
+gemLabel.Size                   = UDim2.fromScale(1, 1)
+gemLabel.BackgroundTransparency = 1
+gemLabel.TextColor3             = Color3.fromRGB(255, 220, 255)
+gemLabel.TextScaled             = true
+gemLabel.Font                   = Enum.Font.GothamBold
+gemLabel.Text                   = "♦ 0"
+
 -- ── Shop Panel (center screen, shown on ProximityPrompt trigger) ──
 local shopPanel = Instance.new("Frame")
 shopPanel.Name                   = "ShopPanel"
@@ -235,11 +262,15 @@ listLayout.Padding      = UDim.new(0, 6)
 
 -- Shop catalog (mirrors ShopManager.CATALOG)
 local SHOP_CATALOG = {
-	{ id = "Wood",     label = "Wood x10",    cost = 10  },
-	{ id = "Stone",    label = "Stone x10",   cost = 15  },
-	{ id = "Obsidian", label = "Obsidian x5", cost = 10  },
-	{ id = "Leather",  label = "Leather Armor (+20 HP)", cost = 50  },
-	{ id = "Iron",     label = "Iron Armor (+50 HP)",    cost = 120 },
+	{ id = "Wood",     itemType = "block",   label = "Wood x10",              cost = 10  },
+	{ id = "Stone",    itemType = "block",   label = "Stone x10",             cost = 15  },
+	{ id = "Obsidian", itemType = "block",   label = "Obsidian x5",           cost = 10  },
+	{ id = "Leather",  itemType = "armor",   label = "Leather Armor (20% DR)", cost = 50 },
+	{ id = "Iron",     itemType = "armor",   label = "Iron Armor (40% DR)",    cost = 120 },
+	{ id = "Stone",    itemType = "sword",   label = "Stone Sword (12 dmg)",   cost = 75  },
+	{ id = "Stone",    itemType = "pickaxe", label = "Stone Pickaxe (2x)",     cost = 75  },
+	{ id = "Iron",     itemType = "sword",   label = "Iron Sword (16 dmg)",    cost = 150 },
+	{ id = "Iron",     itemType = "pickaxe", label = "Iron Pickaxe (3x)",      cost = 150 },
 }
 
 local shopCurrentBalance = 0
@@ -276,11 +307,12 @@ local function buildShopRows()
 		Instance.new("UICorner", buyBtn).CornerRadius = UDim.new(0, 6)
 
 		buyBtn.MouseButton1Click:Connect(function()
-			PurchaseItem:FireServer(entry.id)
+			PurchaseItem:FireServer(entry.id, entry.itemType)
 		end)
 	end
-	-- Update canvas size
 	itemList.CanvasSize = UDim2.new(0, 0, 0, #SHOP_CATALOG * 50)
+	-- Expand panel to show more items
+	shopPanel.Size = UDim2.new(0, 320, 0, math.min(500, 100 + #SHOP_CATALOG * 50))
 end
 
 buildShopRows()
@@ -577,13 +609,17 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	invPanel.Visible = invPanelOpen
 end)
 
--- Live HP update while panel is open
+-- Live HP update: hearts bar always, inventory panel when open
 RunService.Heartbeat:Connect(function()
-	if not invPanel.Visible then return end
 	local char = player.Character
 	local hum  = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
-		invHPLabel.Text = string.format("HP: %d / %d", math.ceil(hum.Health), hum.MaxHealth)
+		if heartsFrame.Visible then
+			updateHearts(hum.Health, hum.MaxHealth)
+		end
+		if invPanel.Visible then
+			invHPLabel.Text = string.format("HP: %d / %d", math.ceil(hum.Health), hum.MaxHealth)
+		end
 	end
 end)
 
@@ -642,6 +678,63 @@ winLabel.BackgroundTransparency = 1
 winLabel.TextColor3             = Color3.new(1, 1, 0)
 winLabel.TextScaled             = true
 winLabel.Font                   = Enum.Font.GothamBold
+
+-- ── Hearts health bar (above hotbar) ──
+local HEART_SIZE = 26
+local HEART_GAP  = 3
+local NUM_HEARTS = 10
+
+local heartsFrame = Instance.new("Frame")
+heartsFrame.Name                   = "HeartsFrame"
+heartsFrame.Size                   = UDim2.new(0, NUM_HEARTS * (HEART_SIZE + HEART_GAP) - HEART_GAP, 0, HEART_SIZE)
+heartsFrame.BackgroundTransparency = 1
+heartsFrame.Visible                = false
+heartsFrame.Parent                 = screenGui
+
+local heartFrames = {}
+for hi = 1, NUM_HEARTS do
+	local h = Instance.new("Frame")
+	h.Size             = UDim2.new(0, HEART_SIZE, 0, HEART_SIZE)
+	h.Position         = UDim2.new(0, (hi - 1) * (HEART_SIZE + HEART_GAP), 0, 0)
+	h.BackgroundColor3 = Color3.fromRGB(200, 35, 35)
+	h.BorderSizePixel  = 0
+	h.Parent           = heartsFrame
+	Instance.new("UICorner", h).CornerRadius = UDim.new(0, 5)
+	-- Inner pixel shadow for blocky look
+	local inner = Instance.new("Frame", h)
+	inner.Size             = UDim2.new(1, -4, 1, -4)
+	inner.Position         = UDim2.new(0, 2, 0, 2)
+	inner.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+	inner.BorderSizePixel  = 0
+	Instance.new("UICorner", inner).CornerRadius = UDim.new(0, 3)
+	heartFrames[hi] = h
+end
+
+local function updateHearts(hp, maxHp)
+	local hpPerHeart = (maxHp or 100) / NUM_HEARTS
+	for hi = 1, NUM_HEARTS do
+		local threshold = hi * hpPerHeart
+		if hp >= threshold then
+			-- Full heart
+			heartFrames[hi].BackgroundColor3 = Color3.fromRGB(190, 30, 30)
+			heartFrames[hi].BackgroundTransparency = 0
+			local inner = heartFrames[hi]:FindFirstChildOfClass("Frame")
+			if inner then inner.BackgroundColor3 = Color3.fromRGB(255, 60, 60); inner.BackgroundTransparency = 0 end
+		elseif hp > (hi - 1) * hpPerHeart then
+			-- Half / partial heart
+			heartFrames[hi].BackgroundColor3 = Color3.fromRGB(130, 25, 25)
+			heartFrames[hi].BackgroundTransparency = 0
+			local inner = heartFrames[hi]:FindFirstChildOfClass("Frame")
+			if inner then inner.BackgroundColor3 = Color3.fromRGB(180, 45, 45); inner.BackgroundTransparency = 0 end
+		else
+			-- Empty heart
+			heartFrames[hi].BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+			heartFrames[hi].BackgroundTransparency = 0.3
+			local inner = heartFrames[hi]:FindFirstChildOfClass("Frame")
+			if inner then inner.BackgroundColor3 = Color3.fromRGB(70, 70, 70); inner.BackgroundTransparency = 0.3 end
+		end
+	end
+end
 
 -- ── Hotbar (bottom-center, clickable slots) ──
 local SLOT_SIZE = 74
@@ -730,6 +823,178 @@ local function highlightSlot(index)
 end
 highlightSlot(1)
 
+-- Position hearts above hotbar (hotbar is at Y offset -(SLOT_SIZE+14))
+local hotbarHeartOffset = -(SLOT_SIZE + 14 + HEART_SIZE + 6)
+heartsFrame.Position = UDim2.new(
+	0.5, -math.floor((NUM_HEARTS * (HEART_SIZE + HEART_GAP) - HEART_GAP) / 2),
+	1, hotbarHeartOffset
+)
+
+-- ── Kit Shop button (next to inventory toggle) ──
+local kitShopBtn = Instance.new("TextButton")
+kitShopBtn.Name             = "KitShopBtn"
+kitShopBtn.Size             = UDim2.new(0, 54, 0, 40)
+kitShopBtn.Position         = UDim2.new(0, 68, 1, -104)
+kitShopBtn.BackgroundColor3 = Color3.fromRGB(100, 30, 160)
+kitShopBtn.TextColor3       = Color3.fromRGB(220, 180, 255)
+kitShopBtn.TextScaled       = true
+kitShopBtn.Font             = Enum.Font.GothamBold
+kitShopBtn.Text             = "[K]"
+kitShopBtn.Visible          = false
+kitShopBtn.ZIndex           = 6
+kitShopBtn.Parent           = screenGui
+Instance.new("UICorner", kitShopBtn).CornerRadius = UDim.new(0, 8)
+local kitBtnStroke = Instance.new("UIStroke", kitShopBtn)
+kitBtnStroke.Color     = Color3.fromRGB(180, 100, 255)
+kitBtnStroke.Thickness = 2
+
+-- ── Kit Shop Panel ──
+local kitPanelOpen = false
+
+local KIT_DEFS_CLIENT = {
+	{ id = "Speed",   desc = "+15% WalkSpeed" },
+	{ id = "Jump",    desc = "+20% JumpPower"  },
+	{ id = "Miner",   desc = "+50% mine speed" },
+	{ id = "Healer",  desc = "2 HP/sec regen"  },
+	{ id = "Trapper", desc = "+25% trap dmg"   },
+}
+local KIT_COST = 100
+
+local kitPanel = Instance.new("Frame")
+kitPanel.Name                   = "KitPanel"
+kitPanel.Size                   = UDim2.new(0, 300, 0, 380)
+kitPanel.Position               = UDim2.new(0.5, -150, 0.5, -190)
+kitPanel.BackgroundColor3       = Color3.fromRGB(20, 10, 35)
+kitPanel.BackgroundTransparency = 0.05
+kitPanel.Visible                = false
+kitPanel.ZIndex                 = 25
+kitPanel.Parent                 = screenGui
+Instance.new("UICorner", kitPanel).CornerRadius = UDim.new(0, 12)
+local kitPanelStroke = Instance.new("UIStroke", kitPanel)
+kitPanelStroke.Color     = Color3.fromRGB(140, 70, 220)
+kitPanelStroke.Thickness = 2
+
+local kitHeader = Instance.new("TextLabel", kitPanel)
+kitHeader.Size                   = UDim2.new(1, -40, 0, 40)
+kitHeader.Position               = UDim2.new(0, 10, 0, 8)
+kitHeader.BackgroundTransparency = 1
+kitHeader.TextColor3             = Color3.fromRGB(200, 140, 255)
+kitHeader.TextScaled             = true
+kitHeader.Font                   = Enum.Font.GothamBold
+kitHeader.Text                   = "KIT SHOP"
+kitHeader.ZIndex                 = 26
+
+local kitClose = Instance.new("TextButton", kitPanel)
+kitClose.Size             = UDim2.new(0, 30, 0, 30)
+kitClose.Position         = UDim2.new(1, -35, 0, 8)
+kitClose.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+kitClose.TextColor3       = Color3.new(1, 1, 1)
+kitClose.TextScaled       = true
+kitClose.Font             = Enum.Font.GothamBold
+kitClose.Text             = "X"
+kitClose.ZIndex           = 26
+Instance.new("UICorner", kitClose).CornerRadius = UDim.new(0, 6)
+
+kitClose.MouseButton1Click:Connect(function()
+	kitPanelOpen   = false
+	kitPanel.Visible = false
+end)
+
+local kitGemLabel = Instance.new("TextLabel", kitPanel)
+kitGemLabel.Size                   = UDim2.new(1, -20, 0, 26)
+kitGemLabel.Position               = UDim2.new(0, 10, 0, 50)
+kitGemLabel.BackgroundTransparency = 1
+kitGemLabel.TextColor3             = Color3.fromRGB(200, 150, 255)
+kitGemLabel.TextScaled             = true
+kitGemLabel.Font                   = Enum.Font.Gotham
+kitGemLabel.Text                   = "Gems: 0"
+kitGemLabel.ZIndex                 = 26
+
+local kitFeedback = Instance.new("TextLabel", kitPanel)
+kitFeedback.Size                   = UDim2.new(1, -20, 0, 22)
+kitFeedback.Position               = UDim2.new(0, 10, 1, -28)
+kitFeedback.BackgroundTransparency = 1
+kitFeedback.TextColor3             = Color3.fromRGB(100, 255, 100)
+kitFeedback.TextScaled             = true
+kitFeedback.Font                   = Enum.Font.Gotham
+kitFeedback.Text                   = ""
+kitFeedback.ZIndex                 = 26
+
+local PurchaseKit = RemoteEvents:WaitForChild("PurchaseKit")
+local KitPurchaseResponse = RemoteEvents:WaitForChild("KitPurchaseResponse")
+
+local kitRowY = 84
+for _, kdef in ipairs(KIT_DEFS_CLIENT) do
+	local row = Instance.new("Frame", kitPanel)
+	row.Size              = UDim2.new(1, -20, 0, 48)
+	row.Position          = UDim2.new(0, 10, 0, kitRowY)
+	row.BackgroundColor3  = Color3.fromRGB(40, 20, 60)
+	row.BorderSizePixel   = 0
+	row.ZIndex            = 27
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+	local nameL = Instance.new("TextLabel", row)
+	nameL.Size                   = UDim2.new(0.55, 0, 0.5, 0)
+	nameL.Position               = UDim2.new(0, 8, 0, 2)
+	nameL.BackgroundTransparency = 1
+	nameL.TextColor3             = Color3.fromRGB(230, 200, 255)
+	nameL.TextScaled             = true
+	nameL.Font                   = Enum.Font.GothamBold
+	nameL.Text                   = kdef.id
+	nameL.TextXAlignment         = Enum.TextXAlignment.Left
+	nameL.ZIndex                 = 28
+
+	local descL = Instance.new("TextLabel", row)
+	descL.Size                   = UDim2.new(0.55, 0, 0.45, 0)
+	descL.Position               = UDim2.new(0, 8, 0.5, 0)
+	descL.BackgroundTransparency = 1
+	descL.TextColor3             = Color3.fromRGB(170, 140, 200)
+	descL.TextScaled             = true
+	descL.Font                   = Enum.Font.Gotham
+	descL.Text                   = kdef.desc
+	descL.TextXAlignment         = Enum.TextXAlignment.Left
+	descL.ZIndex                 = 28
+
+	local buyK = Instance.new("TextButton", row)
+	buyK.Size             = UDim2.new(0, 90, 0, 32)
+	buyK.Position         = UDim2.new(1, -98, 0.5, -16)
+	buyK.BackgroundColor3 = Color3.fromRGB(100, 40, 160)
+	buyK.TextColor3       = Color3.new(1, 1, 1)
+	buyK.TextScaled       = true
+	buyK.Font             = Enum.Font.GothamBold
+	buyK.Text             = "♦ " .. KIT_COST
+	buyK.ZIndex           = 28
+	Instance.new("UICorner", buyK).CornerRadius = UDim.new(0, 6)
+
+	local capturedKit = kdef.id
+	buyK.MouseButton1Click:Connect(function()
+		PurchaseKit:FireServer(capturedKit)
+	end)
+
+	kitRowY = kitRowY + 54
+end
+
+kitShopBtn.MouseButton1Click:Connect(function()
+	kitPanelOpen   = not kitPanelOpen
+	kitPanel.Visible = kitPanelOpen
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.K then
+		if currentState ~= "SETUP" and currentState ~= "PLAYING" then return end
+		kitPanelOpen   = not kitPanelOpen
+		kitPanel.Visible = kitPanelOpen
+	end
+end)
+
+KitPurchaseResponse.OnClientEvent:Connect(function(success, message, kitId)
+	kitFeedback.Text       = message or ""
+	kitFeedback.TextColor3 = success
+		and Color3.fromRGB(80, 255, 80)
+		or  Color3.fromRGB(255, 80, 80)
+end)
+
 -- ========== Helpers ==========
 
 local function formatTime(seconds)
@@ -772,18 +1037,23 @@ RoundStateChanged.OnClientEvent:Connect(function(state, data)
 	roundLabel.Visible   = isPlaying
 	bigCountdown.Visible = false
 	hotbarFrame.Visible    = (isSetup or isPlaying)
+	heartsFrame.Visible    = (isSetup or isPlaying)
 	winScreen.Visible      = isResults
 	anchorStatus.Visible   = (isSetup or isPlaying)
 	armorFrame.Visible     = (isSetup or isPlaying)
 	currencyFrame.Visible  = (isSetup or isPlaying)
+	gemFrame.Visible       = (isSetup or isPlaying)
 	testButton.Visible     = (state == "LOBBY")
 	invToggleBtn.Visible   = (isSetup or isPlaying)
+	kitShopBtn.Visible     = (isSetup or isPlaying)
 
-	-- Close shop and inventory when transitioning away from active play
+	-- Close shop/inventory/kit panel when transitioning away from active play
 	if isLobby or isResults then
 		shopPanel.Visible = false
 		invPanel.Visible  = false
+		kitPanel.Visible  = false
 		invPanelOpen      = false
+		kitPanelOpen      = false
 	end
 
 	if isLobby then
@@ -804,7 +1074,7 @@ UpdateTimers.OnClientEvent:Connect(function(timeToSwap, timeLeft, setupTimeLeft)
 	if currentState == "SETUP" then
 		local t = math.max(0, math.floor(setupTimeLeft or 0))
 		setupBanner.Text = string.format(
-			"SETUP PHASE  %ds  |  Left-click to place Soul Crystal  |  1-5 to build", t)
+			"SETUP PHASE  %ds  |  Left-click to place Soul Crystal  |  1-9 to build", t)
 
 	elseif currentState == "PLAYING" then
 		local ts = math.max(0, math.floor(timeToSwap))
@@ -912,15 +1182,20 @@ ShopResponse.OnClientEvent:Connect(function(success, message)
 end)
 
 -- Armor equipped notification
-ArmorEquipped.OnClientEvent:Connect(function(armorId, bonusHP)
+ArmorEquipped.OnClientEvent:Connect(function(armorId, reduction)
+	if not armorId then
+		armorLabel.Text = "Armor: None"
+		invArmorSlotLbl.Text = "None"
+		return
+	end
 	local color = armorId == "Iron"
 		and Color3.fromRGB(180, 185, 190)
 		or  Color3.fromRGB(150, 100, 60)
-	armorLabel.Text       = string.format("Armor: %s (+%d HP)", armorId, bonusHP)
+	local pct = math.round((reduction or 0) * 100)
+	armorLabel.Text       = string.format("Armor: %s (%d%% DR)", armorId, pct)
 	armorLabel.TextColor3 = color
-	-- Sync inventory panel armor slot
 	invArmorIcon.BackgroundColor3 = color
-	invArmorSlotLbl.Text          = string.format("%s (+%d HP)", armorId, bonusHP)
+	invArmorSlotLbl.Text          = string.format("%s (%d%% DR)", armorId, pct)
 	invArmorSlotLbl.TextColor3    = color
 end)
 
@@ -932,6 +1207,12 @@ UpdateCurrency.OnClientEvent:Connect(function(amount)
 	if shopPanel.Visible then
 		shopBalanceLabel.Text = "Balance: $" .. tostring(amount)
 	end
+end)
+
+-- Gems update
+UpdateGems.OnClientEvent:Connect(function(gems)
+	gemLabel.Text      = "♦ " .. tostring(gems)
+	kitGemLabel.Text   = "Gems: " .. tostring(gems)
 end)
 
 -- ========== Hotbar updates from PlacementClient ==========
@@ -1174,7 +1455,7 @@ do
 
 	panel.Size = UDim2.new(0, 280, 0, rowY + 28)
 
-	-- Update gem display
+	-- Mirror gem count in the dev panel status label
 	UpdateGems.OnClientEvent:Connect(function(gems)
 		statusLbl.Text = "Gems: " .. gems
 	end)
