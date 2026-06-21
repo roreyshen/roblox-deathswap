@@ -30,9 +30,10 @@ local MAX_PLACE_Y = GameConfig.ISLAND_Y + GameConfig.GRID_SIZE * 4 + (GameConfig
 -- ========== Helpers ==========
 
 local function snapToGrid(pos)
+	local HALF = GRID / 2
 	return Vector3.new(
 		math.round(pos.X / GRID) * GRID,
-		math.round(pos.Y / GRID) * GRID,
+		math.round((pos.Y - HALF) / GRID) * GRID + HALF,
 		math.round(pos.Z / GRID) * GRID
 	)
 end

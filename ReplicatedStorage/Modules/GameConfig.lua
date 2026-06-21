@@ -29,7 +29,7 @@ return {
 	-- Voxel terrain settings
 	ISLAND_RADIUS        = 100,   -- studs from center to edge
 	ISLAND_Y             = 100,   -- base Y of terrain bottom (bedrock)
-	TERRAIN_WALL_HEIGHT  = 12,    -- perimeter barrier height in studs
+	TERRAIN_WALL_HEIGHT  = 800,   -- perimeter barrier height in studs (very tall — impossible to escape)
 	PLACE_HEIGHT_LIMIT   = 40,    -- max studs above island surface players can build
 
 	-- Order matters: index 1-9 maps to hotbar slots (1-6 combat, 7-9 terrain)
@@ -47,15 +47,15 @@ return {
 
 	-- Hits required to break each block type with right-click/E-key
 	BLOCK_HP = {
-		Stone    = 3,
-		Wood     = 1,
-		Obsidian = 8,
-		Lava     = 1,
-		Spike    = 2,
-		TNT      = 1,
-		Grass    = 1,
-		Dirt     = 2,
-		Rock     = 3,
+		Stone    = 75,   -- building block (5× longer decay)
+		Wood     = 25,   -- building block (5× longer decay)
+		Obsidian = 200,  -- building block (5× longer decay)
+		Lava     = 1,    -- trap: unchanged
+		Spike    = 2,    -- trap: unchanged
+		TNT      = 1,    -- trap: unchanged
+		Grass    = 25,   -- building block (5× longer decay)
+		Dirt     = 50,   -- building block (5× longer decay)
+		Rock     = 75,   -- building block (5× longer decay)
 	},
 
 	STARTING_INVENTORY = {

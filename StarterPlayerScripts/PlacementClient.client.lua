@@ -31,9 +31,10 @@ local BLOCK_TYPES    = GameConfig.BLOCK_TYPES
 -- ========== Grid snap ==========
 
 local function snapToGrid(pos)
+	local HALF = GRID / 2
 	return Vector3.new(
 		math.round(pos.X / GRID) * GRID,
-		math.round(pos.Y / GRID) * GRID,
+		math.round((pos.Y - HALF) / GRID) * GRID + HALF,
 		math.round(pos.Z / GRID) * GRID
 	)
 end
@@ -79,20 +80,26 @@ end
 -- ========== Raycast helpers ==========
 
 local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.FilterType         = Enum.RaycastFilterType.Exclude
+rayParams.RespectCanCollide  = true   -- skip CanCollide=false parts (spawn markers, decorations)
 
 local function getTarget(extraExclude)
 	local char = player.Character
 	if not char then return nil end
 	local excludeList = { previewBlock, crystalPreview, char }
-	-- Exclude merchant NPCs and test bots so they don't intercept block placement
+	-- Exclude merchant NPCs, test bots, spawn markers, and lobby elements
 	local map = workspace:FindFirstChild("Map")
 	if map then
 		local shops = map:FindFirstChild("Shops")
 		if shops then table.insert(excludeList, shops) end
+		-- Exclude spawn markers so they don't shift block placement height
+		local spawnPts = map:FindFirstChild("SpawnPoints")
+		if spawnPts then table.insert(excludeList, spawnPts) end
 	end
 	for _, v in ipairs(workspace:GetChildren()) do
-		if v.Name == "TestBot" then table.insert(excludeList, v) end
+		if v.Name == "TestBot" or v.Name == "LobbyBot" then
+			table.insert(excludeList, v)
+		end
 	end
 	if extraExclude then table.insert(excludeList, extraExclude) end
 	rayParams.FilterDescendantsInstances = excludeList

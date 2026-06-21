@@ -33,6 +33,20 @@ local UpdateGems          = RemoteEvents:WaitForChild("UpdateGems")
 local PurchaseKit         = RemoteEvents:WaitForChild("PurchaseKit")
 local KitPurchaseResponse = RemoteEvents:WaitForChild("KitPurchaseResponse")
 
+-- Lobby matchmaking remotes (created here if missing)
+local function getOrCreate(name)
+	local e = RemoteEvents:FindFirstChild(name)
+	if not e then
+		e = Instance.new("RemoteEvent")
+		e.Name   = name
+		e.Parent = RemoteEvents
+	end
+	return e
+end
+local JoinQueue   = getOrCreate("JoinQueue")
+local LeaveQueue  = getOrCreate("LeaveQueue")
+local QueueUpdate = getOrCreate("QueueUpdate")
+
 ShopManager.init(RemoteEvents, UpdateInventory, UpdateCurrency)
 
 -- ========== Kit purchase handler ==========
@@ -82,14 +96,16 @@ EquipArmor.OnServerEvent:Connect(function(player, armorId)
 	end
 end)
 
--- ========== Test mode ==========
+-- ========== Bot factory (shared by test mode and lobby) ==========
 
 local testModeActive = false
-local botSet         = {}
+local botSet         = {}    -- game bots (test mode)
+local lobbyBots      = {}    -- lobby practice bots
+local lobbyBotsActive = false
 
-local function spawnTestBot(spawnCF)
+local function makeBotModel(name, spawnCF, labelText, labelColor)
 	local model = Instance.new("Model")
-	model.Name  = "TestBot"
+	model.Name  = name
 
 	local hrp = Instance.new("Part")
 	hrp.Name         = "HumanoidRootPart"
@@ -124,10 +140,10 @@ local function spawnTestBot(spawnCF)
 	local lbl = Instance.new("TextLabel", gui)
 	lbl.Size                   = UDim2.fromScale(1, 1)
 	lbl.BackgroundTransparency = 1
-	lbl.TextColor3             = Color3.fromRGB(255, 80, 80)
+	lbl.TextColor3             = labelColor or Color3.fromRGB(255, 80, 80)
 	lbl.TextScaled             = true
 	lbl.Font                   = Enum.Font.GothamBold
-	lbl.Text                   = "TEST BOT"
+	lbl.Text                   = labelText or "BOT"
 
 	local hum = Instance.new("Humanoid")
 	hum.MaxHealth = 100
@@ -135,11 +151,12 @@ local function spawnTestBot(spawnCF)
 	hum.Parent    = model
 
 	model.Parent = workspace
+	return model, hum
+end
 
-	hum.Died:Connect(function()
-		botSet[model] = nil
-	end)
-
+local function spawnTestBot(spawnCF)
+	local model, hum = makeBotModel("TestBot", spawnCF, "TEST BOT", Color3.fromRGB(255, 80, 80))
+	hum.Died:Connect(function() botSet[model] = nil end)
 	return model
 end
 
@@ -150,10 +167,85 @@ local function clearBots()
 	botSet = {}
 end
 
+-- ========== Lobby bot management ==========
+
+local LOBBY_BOT_POSITIONS = {
+	CFrame.new( 20, 120,  20),
+	CFrame.new(-20, 120,  20),
+	CFrame.new( 20, 120, -20),
+	CFrame.new(-20, 120, -20),
+	CFrame.new( 40, 120,   0),
+	CFrame.new(-40, 120,   0),
+	CFrame.new(  0, 120,  40),
+	CFrame.new(  0, 120, -40),
+}
+
+local function spawnOneLobbyBot(spawnCF)
+	if not lobbyBotsActive then return end
+	local model, hum = makeBotModel("LobbyBot", spawnCF, "PRACTICE BOT", Color3.fromRGB(120, 200, 255))
+	lobbyBots[model] = true
+	hum.Died:Connect(function()
+		lobbyBots[model] = nil
+		-- Respawn after a short delay
+		task.delay(4, function()
+			if lobbyBotsActive then
+				spawnOneLobbyBot(spawnCF)
+			end
+		end)
+	end)
+	return model
+end
+
+local function spawnLobbyBots()
+	lobbyBotsActive = true
+	for _, cf in ipairs(LOBBY_BOT_POSITIONS) do
+		spawnOneLobbyBot(cf)
+		task.wait(0.1)
+	end
+end
+
+local function clearLobbyBots()
+	lobbyBotsActive = false
+	for model in pairs(lobbyBots) do
+		pcall(function() model:Destroy() end)
+	end
+	lobbyBots = {}
+end
+
+-- ========== Matchmaking queue ==========
+
+local lobbyQueue = {}  -- player → true when queued for matchmaking
+local queueCountdownActive = false
+
+local function countQueue()
+	local n = 0
+	for _ in pairs(lobbyQueue) do n += 1 end
+	return n
+end
+
+local function broadcastQueueStatus(countdown)
+	QueueUpdate:FireAllClients(countQueue(), GameConfig.MIN_PLAYERS, countdown or 0)
+end
+
+JoinQueue.OnServerEvent:Connect(function(player)
+	if GameState.current ~= "LOBBY" then return end
+	lobbyQueue[player] = true
+	broadcastQueueStatus()
+end)
+
+LeaveQueue.OnServerEvent:Connect(function(player)
+	lobbyQueue[player] = nil
+	broadcastQueueStatus()
+end)
+
 StartTestMode.OnServerEvent:Connect(function()
 	if GameState.current ~= "LOBBY" then return end
 	if #Players:GetPlayers() < 1 then return end
 	testModeActive = true
+	-- Also add the player to force-start
+	for _, p in ipairs(Players:GetPlayers()) do
+		lobbyQueue[p] = true
+	end
 end)
 
 -- ========== State ==========
@@ -187,6 +279,26 @@ local function spawnPlayer(player, spawnCF)
 	local char = player.Character
 	if char and char.Parent and spawnCF then
 		char:PivotTo(spawnCF)
+	end
+end
+
+-- Spawn a single player into the lobby with starting items
+local function spawnPlayerInLobby(player)
+	InventoryManager.reset(player)
+	CurrencyManager.reset(player)
+	UpdateInventory:FireClient(player, InventoryManager.get(player))
+	UpdateCurrency:FireClient(player, CurrencyManager.get(player))
+	UpdateGems:FireClient(player, GemManager.get(player))
+	ToolManager.giveWeapons(player, "Wood", "Wood")
+	KitManager.reapply(player)
+	local cframes = MapManager.getSpawnCFrames()
+	local cf = #cframes > 0 and cframes[math.random(1, #cframes)] or CFrame.new(0, 130, 0)
+	spawnPlayer(player, cf)
+end
+
+local function spawnAllPlayersInLobby()
+	for _, player in ipairs(Players:GetPlayers()) do
+		spawnPlayerInLobby(player)
 	end
 end
 
@@ -299,6 +411,11 @@ Players.PlayerAdded:Connect(function(player)
 		ArmorManager.reapply(player)
 		KitManager.reapply(player)
 	end)
+	-- Spawn immediately in lobby so new arrivals can join and play
+	if GameState.current == "LOBBY" then
+		task.wait(1)  -- short wait for character system to init
+		spawnPlayerInLobby(player)
+	end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -361,6 +478,8 @@ local function setState(state, data)
 	RoundStateChanged:FireAllClients(state, data)
 end
 
+-- ========== Helpers ==========
+
 local function waitForMinPlayers()
 	while #Players:GetPlayers() < GameConfig.MIN_PLAYERS and not testModeActive do
 		task.wait(1)
@@ -389,21 +508,62 @@ end
 -- ========== Main game loop ==========
 
 while true do
+	-- ── LOBBY PHASE ──────────────────────────────────────────────────────────
 	setState("LOBBY")
-	testModeActive = false
+	testModeActive        = false
+	queueCountdownActive  = false
+	lobbyQueue            = {}
 	clearBots()
-	waitForMinPlayers()
+	clearLobbyBots()
 
-	setState("COUNTDOWN")
-	if testModeActive then
-		for i = 3, 1, -1 do
-			UpdateTimers:FireAllClients(i, 0, 0)
-			task.wait(1)
+	-- Generate map so players have something to explore and shop in
+	MapManager.reset()
+	MapManager.generate()
+	wireShopPrompts()
+	AnchorManager.clearAll()
+
+	-- Spawn all currently connected players into the lobby
+	spawnAllPlayersInLobby()
+
+	-- Spawn lobby practice bots
+	spawnLobbyBots()
+
+	-- Fire initial queue status
+	broadcastQueueStatus()
+
+	-- Wait for enough players to queue up
+	local gameReady = false
+	while not gameReady do
+		task.wait(1)
+
+		local qCount = countQueue()
+		if qCount >= GameConfig.MIN_PLAYERS or testModeActive then
+			-- Queue is full — run matchmaking countdown
+			queueCountdownActive = true
+			local countdownOk = true
+			for i = 10, 1, -1 do
+				broadcastQueueStatus(i)
+				task.wait(1)
+				if countQueue() < GameConfig.MIN_PLAYERS and not testModeActive then
+					countdownOk      = false
+					queueCountdownActive = false
+					broadcastQueueStatus()
+					break
+				end
+			end
+			if countdownOk then
+				gameReady = true
+			end
+		else
+			broadcastQueueStatus()
 		end
-	else
-		if not runLobbyCountdown() then continue end
 	end
 
+	-- ── TRANSITION TO GAME ────────────────────────────────────────────────────
+	setState("COUNTDOWN")
+	clearLobbyBots()
+
+	-- Regenerate a fresh map for the actual game
 	MapManager.reset()
 	clearBots()
 	MapManager.generate()
@@ -413,6 +573,7 @@ while true do
 	aliveSet       = {}
 	respawningSet  = {}
 	playerSpawnCFs = {}
+	lobbyQueue     = {}
 
 	spawnAllPlayers()
 

@@ -341,7 +341,7 @@ function MapGenerator.buildKillBorder(mapFolder, borderSize)
 	border.Name   = "KillBorder"
 	border.Parent = mapFolder
 
-	local wallH = 150
+	local wallH = 900
 	local wallT = 10
 	local wallY = BASE_Y + wallH / 2
 

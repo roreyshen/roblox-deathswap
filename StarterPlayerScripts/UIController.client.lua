@@ -321,17 +321,81 @@ shopClose.MouseButton1Click:Connect(function()
 	shopPanel.Visible = false
 end)
 
--- ── Test Mode button (visible in lobby only) ──
+-- ── Lobby buttons (visible in LOBBY state) ──
+local JoinQueue  = RemoteEvents:WaitForChild("JoinQueue")
+local LeaveQueue = RemoteEvents:WaitForChild("LeaveQueue")
+local QueueUpdate = RemoteEvents:WaitForChild("QueueUpdate")
+
+-- PLAY button (matchmaking)
+local playButton = Instance.new("TextButton")
+playButton.Name                   = "PlayButton"
+playButton.Size                   = UDim2.new(0, 220, 0, 60)
+playButton.Position               = UDim2.new(0.5, -110, 0.52, 0)
+playButton.BackgroundColor3       = Color3.fromRGB(30, 140, 30)
+playButton.TextColor3             = Color3.new(1, 1, 1)
+playButton.TextScaled             = true
+playButton.Font                   = Enum.Font.GothamBold
+playButton.Text                   = "PLAY"
+playButton.ZIndex                 = 5
+playButton.Visible                = false
+playButton.Parent                 = screenGui
+Instance.new("UICorner", playButton).CornerRadius = UDim.new(0, 12)
+local playBtnStroke = Instance.new("UIStroke", playButton)
+playBtnStroke.Color = Color3.fromRGB(60, 255, 60); playBtnStroke.Thickness = 2
+
+-- Queue status label
+local queueStatusLabel = Instance.new("TextLabel")
+queueStatusLabel.Name                   = "QueueStatus"
+queueStatusLabel.Size                   = UDim2.new(0, 220, 0, 30)
+queueStatusLabel.Position               = UDim2.new(0.5, -110, 0.52, 68)
+queueStatusLabel.BackgroundTransparency = 1
+queueStatusLabel.TextColor3             = Color3.fromRGB(180, 220, 180)
+queueStatusLabel.TextScaled             = true
+queueStatusLabel.Font                   = Enum.Font.Gotham
+queueStatusLabel.Text                   = ""
+queueStatusLabel.ZIndex                 = 5
+queueStatusLabel.Visible                = false
+queueStatusLabel.Parent                 = screenGui
+
+local inQueue = false
+playButton.MouseButton1Click:Connect(function()
+	if not inQueue then
+		inQueue = true
+		JoinQueue:FireServer()
+		playButton.Text             = "LEAVE QUEUE"
+		playButton.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
+		playBtnStroke.Color         = Color3.fromRGB(255, 80, 80)
+	else
+		inQueue = false
+		LeaveQueue:FireServer()
+		playButton.Text             = "PLAY"
+		playButton.BackgroundColor3 = Color3.fromRGB(30, 140, 30)
+		playBtnStroke.Color         = Color3.fromRGB(60, 255, 60)
+	end
+end)
+
+QueueUpdate.OnClientEvent:Connect(function(count, needed, countdown)
+	if countdown and countdown > 0 then
+		queueStatusLabel.Text       = "Starting in " .. countdown .. "s..."
+		queueStatusLabel.TextColor3 = Color3.fromRGB(255, 220, 60)
+	else
+		queueStatusLabel.Text       = count .. " / " .. needed .. " players queued"
+		queueStatusLabel.TextColor3 = Color3.fromRGB(160, 215, 160)
+	end
+end)
+
+-- TEST (Solo) button
 local testButton = Instance.new("TextButton")
 testButton.Name                   = "TestModeButton"
-testButton.Size                   = UDim2.new(0, 200, 0, 50)
-testButton.Position               = UDim2.new(0.5, -100, 0.56, 0)
-testButton.BackgroundColor3       = Color3.fromRGB(50, 160, 50)
+testButton.Size                   = UDim2.new(0, 160, 0, 40)
+testButton.Position               = UDim2.new(0.5, -80, 0.64, 0)
+testButton.BackgroundColor3       = Color3.fromRGB(50, 60, 130)
 testButton.TextColor3             = Color3.new(1, 1, 1)
 testButton.TextScaled             = true
 testButton.Font                   = Enum.Font.GothamBold
-testButton.Text                   = "TEST (Solo)"
+testButton.Text                   = "SOLO TEST"
 testButton.ZIndex                 = 5
+testButton.Visible                = false
 testButton.Parent                 = screenGui
 Instance.new("UICorner", testButton).CornerRadius = UDim.new(0, 10)
 
@@ -341,175 +405,173 @@ testButton.MouseButton1Click:Connect(function()
 	testButton.Active = false
 end)
 
--- ── RPG Inventory Panel (I key / bag button) ──
+-- ── Inventory Panel (I key) ──
 local invPanelOpen = false
 
+local PANEL_W, PANEL_H = 580, 460
 local invPanel = Instance.new("Frame")
 invPanel.Name                   = "InventoryPanel"
-invPanel.Size                   = UDim2.new(0, 390, 0, 460)
-invPanel.Position               = UDim2.new(0.5, -195, 0.5, -230)
-invPanel.BackgroundColor3       = Color3.fromRGB(18, 15, 11)
+invPanel.Size                   = UDim2.new(0, PANEL_W, 0, PANEL_H)
+invPanel.Position               = UDim2.new(0.5, -PANEL_W/2, 0.5, -PANEL_H/2)
+invPanel.BackgroundColor3       = Color3.fromRGB(10, 12, 18)
 invPanel.BorderSizePixel        = 0
 invPanel.Visible                = false
 invPanel.ZIndex                 = 30
 invPanel.Parent                 = screenGui
 Instance.new("UICorner", invPanel).CornerRadius = UDim.new(0, 10)
 local invPanelStroke = Instance.new("UIStroke", invPanel)
-invPanelStroke.Color     = Color3.fromRGB(145, 115, 50)
-invPanelStroke.Thickness = 3
+invPanelStroke.Color     = Color3.fromRGB(55, 145, 210)
+invPanelStroke.Thickness = 2
 
--- Header
-local invHeader = Instance.new("Frame", invPanel)
-invHeader.Size             = UDim2.new(1, 0, 0, 36)
-invHeader.BackgroundColor3 = Color3.fromRGB(38, 30, 18)
-invHeader.BorderSizePixel  = 0
-invHeader.ZIndex           = 31
-Instance.new("UICorner", invHeader).CornerRadius = UDim.new(0, 10)
-local invHeaderPatch = Instance.new("Frame", invHeader)
-invHeaderPatch.Size             = UDim2.new(1, 0, 0.5, 0)
-invHeaderPatch.Position         = UDim2.new(0, 0, 0.5, 0)
-invHeaderPatch.BackgroundColor3 = Color3.fromRGB(38, 30, 18)
-invHeaderPatch.BorderSizePixel  = 0
-invHeaderPatch.ZIndex           = 31
+-- Header bar
+local invHeaderBar = Instance.new("Frame", invPanel)
+invHeaderBar.Size             = UDim2.new(1, 0, 0, 40)
+invHeaderBar.BackgroundColor3 = Color3.fromRGB(14, 18, 28)
+invHeaderBar.BorderSizePixel  = 0
+invHeaderBar.ZIndex           = 31
+Instance.new("UICorner", invHeaderBar).CornerRadius = UDim.new(0, 10)
+do  -- patch bottom corners flat
+	local p = Instance.new("Frame", invHeaderBar)
+	p.Size = UDim2.new(1,0,0.5,0); p.Position = UDim2.new(0,0,0.5,0)
+	p.BackgroundColor3 = Color3.fromRGB(14,18,28); p.BorderSizePixel = 0; p.ZIndex = 31
+end
 
-local invTitle = Instance.new("TextLabel", invHeader)
-invTitle.Size                   = UDim2.new(1, -44, 1, 0)
-invTitle.Position               = UDim2.new(0, 12, 0, 0)
+local invTitle = Instance.new("TextLabel", invHeaderBar)
+invTitle.Size = UDim2.new(1, -50, 1, 0)
+invTitle.Position = UDim2.new(0, 14, 0, 0)
 invTitle.BackgroundTransparency = 1
-invTitle.TextColor3             = Color3.fromRGB(205, 170, 70)
-invTitle.TextScaled             = true
-invTitle.Font                   = Enum.Font.GothamBold
-invTitle.Text                   = "INVENTORY  [I]"
-invTitle.TextXAlignment         = Enum.TextXAlignment.Left
-invTitle.ZIndex                 = 32
+invTitle.TextColor3 = Color3.fromRGB(100, 190, 255)
+invTitle.TextScaled = true; invTitle.Font = Enum.Font.GothamBold
+invTitle.Text = "INVENTORY"; invTitle.TextXAlignment = Enum.TextXAlignment.Left
+invTitle.ZIndex = 32
 
-local invCloseBtn = Instance.new("TextButton", invHeader)
+local invAccentLine = Instance.new("Frame", invPanel)
+invAccentLine.Size = UDim2.new(1, -4, 0, 2)
+invAccentLine.Position = UDim2.new(0, 2, 0, 40)
+invAccentLine.BackgroundColor3 = Color3.fromRGB(55, 145, 210)
+invAccentLine.BorderSizePixel = 0; invAccentLine.ZIndex = 32
+
+local invCloseBtn = Instance.new("TextButton", invPanel)
 invCloseBtn.Size             = UDim2.new(0, 28, 0, 28)
-invCloseBtn.Position         = UDim2.new(1, -32, 0.5, -14)
-invCloseBtn.BackgroundColor3 = Color3.fromRGB(150, 35, 35)
+invCloseBtn.Position         = UDim2.new(1, -34, 0, 6)
+invCloseBtn.BackgroundColor3 = Color3.fromRGB(160, 35, 35)
 invCloseBtn.TextColor3       = Color3.new(1, 1, 1)
 invCloseBtn.TextScaled       = true
 invCloseBtn.Font             = Enum.Font.GothamBold
 invCloseBtn.Text             = "X"
-invCloseBtn.ZIndex           = 32
+invCloseBtn.ZIndex           = 34
 Instance.new("UICorner", invCloseBtn).CornerRadius = UDim.new(0, 5)
 invCloseBtn.MouseButton1Click:Connect(function()
 	invPanelOpen = false
 	invPanel.Visible = false
 end)
 
+-- ── LEFT COLUMN: character viewport + armor + stats (width=158) ──
+local LEFT_W = 158
+
+-- Character viewport (ViewportFrame)
+local vpFrame = Instance.new("ViewportFrame", invPanel)
+vpFrame.Name             = "CharPreview"
+vpFrame.Size             = UDim2.new(0, LEFT_W - 8, 0, 200)
+vpFrame.Position         = UDim2.new(0, 4, 0, 46)
+vpFrame.BackgroundColor3 = Color3.fromRGB(16, 20, 30)
+vpFrame.BorderSizePixel  = 0
+vpFrame.ZIndex           = 32
+vpFrame.LightDirection   = Vector3.new(-1, -2, -1)
+vpFrame.Ambient          = Color3.fromRGB(80, 80, 90)
+Instance.new("UICorner", vpFrame).CornerRadius = UDim.new(0, 8)
+local vpStroke = Instance.new("UIStroke", vpFrame)
+vpStroke.Color = Color3.fromRGB(40, 65, 100); vpStroke.Thickness = 1
+local vpCamera = Instance.new("Camera", vpFrame)
+vpCamera.FieldOfView = 50
+vpFrame.CurrentCamera = vpCamera
+
+-- Armor section
+local armorSectionLbl = Instance.new("TextLabel", invPanel)
+armorSectionLbl.Size = UDim2.new(0, LEFT_W - 8, 0, 18)
+armorSectionLbl.Position = UDim2.new(0, 4, 0, 252)
+armorSectionLbl.BackgroundTransparency = 1
+armorSectionLbl.TextColor3 = Color3.fromRGB(80, 150, 215)
+armorSectionLbl.TextScaled = true; armorSectionLbl.Font = Enum.Font.GothamBold
+armorSectionLbl.Text = "ARMOR"; armorSectionLbl.TextXAlignment = Enum.TextXAlignment.Left
+armorSectionLbl.ZIndex = 32
+
+local chestSlotFrame = Instance.new("Frame", invPanel)
+chestSlotFrame.Name             = "ArmorSlot"
+chestSlotFrame.Size             = UDim2.new(0, LEFT_W - 8, 0, 60)
+chestSlotFrame.Position         = UDim2.new(0, 4, 0, 272)
+chestSlotFrame.BackgroundColor3 = Color3.fromRGB(20, 25, 38)
+chestSlotFrame.BorderSizePixel  = 0
+chestSlotFrame.ZIndex           = 32
+Instance.new("UICorner", chestSlotFrame).CornerRadius = UDim.new(0, 8)
+local csStroke = Instance.new("UIStroke", chestSlotFrame)
+csStroke.Color = Color3.fromRGB(50, 75, 115); csStroke.Thickness = 1.5
+
+local chestIcon = Instance.new("TextLabel", chestSlotFrame)
+chestIcon.Size = UDim2.new(0, 32, 1, -6)
+chestIcon.Position = UDim2.new(0, 6, 0, 3)
+chestIcon.BackgroundTransparency = 1
+chestIcon.TextColor3 = Color3.fromRGB(90, 110, 145)
+chestIcon.TextScaled = true; chestIcon.Font = Enum.Font.GothamBold
+chestIcon.Text = "▲"; chestIcon.ZIndex = 33
+
+local invArmorSlotLbl = Instance.new("TextLabel", chestSlotFrame)
+invArmorSlotLbl.Size = UDim2.new(1, -42, 1, -6)
+invArmorSlotLbl.Position = UDim2.new(0, 42, 0, 3)
+invArmorSlotLbl.BackgroundTransparency = 1
+invArmorSlotLbl.TextColor3 = Color3.fromRGB(175, 185, 205)
+invArmorSlotLbl.TextScaled = true; invArmorSlotLbl.Font = Enum.Font.GothamBold
+invArmorSlotLbl.Text = "None"; invArmorSlotLbl.TextXAlignment = Enum.TextXAlignment.Left
+invArmorSlotLbl.ZIndex = 33
+local invArmorIcon = chestSlotFrame  -- compat: ArmorEquipped handler sets BackgroundColor3
+
+-- Stats
+local invHPLabel = Instance.new("TextLabel", invPanel)
+invHPLabel.Size = UDim2.new(0, LEFT_W - 8, 0, 22)
+invHPLabel.Position = UDim2.new(0, 4, 0, 342)
+invHPLabel.BackgroundTransparency = 1
+invHPLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+invHPLabel.TextScaled = true; invHPLabel.Font = Enum.Font.Gotham
+invHPLabel.Text = "HP: ---"; invHPLabel.TextXAlignment = Enum.TextXAlignment.Left
+invHPLabel.ZIndex = 32
+
+local invCoinsLabel = Instance.new("TextLabel", invPanel)
+invCoinsLabel.Size = UDim2.new(0, LEFT_W - 8, 0, 20)
+invCoinsLabel.Position = UDim2.new(0, 4, 0, 366)
+invCoinsLabel.BackgroundTransparency = 1
+invCoinsLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+invCoinsLabel.TextScaled = true; invCoinsLabel.Font = Enum.Font.Gotham
+invCoinsLabel.Text = "Coins: $0"; invCoinsLabel.TextXAlignment = Enum.TextXAlignment.Left
+invCoinsLabel.ZIndex = 32
+
 -- Vertical divider
 local invVDiv = Instance.new("Frame", invPanel)
-invVDiv.Size             = UDim2.new(0, 1, 1, -42)
-invVDiv.Position         = UDim2.new(0, 148, 0, 40)
-invVDiv.BackgroundColor3 = Color3.fromRGB(100, 80, 35)
-invVDiv.BorderSizePixel  = 0
-invVDiv.ZIndex           = 31
+invVDiv.Size = UDim2.new(0, 1, 1, -44)
+invVDiv.Position = UDim2.new(0, LEFT_W + 4, 0, 43)
+invVDiv.BackgroundColor3 = Color3.fromRGB(32, 52, 78)
+invVDiv.BorderSizePixel = 0; invVDiv.ZIndex = 31
 
--- ── LEFT: Equipment + Stats ──
-local invLeft = Instance.new("Frame", invPanel)
-invLeft.Size                   = UDim2.new(0, 148, 1, -42)
-invLeft.Position               = UDim2.new(0, 0, 0, 40)
-invLeft.BackgroundTransparency = 1
-invLeft.ZIndex                 = 31
+-- ── RIGHT: block inventory grid ──
+local vpX = LEFT_W + 10
 
-local function invSectionLbl(parent, text, yPos)
-	local l = Instance.new("TextLabel", parent)
-	l.Size = UDim2.new(1, -10, 0, 18)
-	l.Position = UDim2.new(0, 6, 0, yPos)
-	l.BackgroundTransparency = 1
-	l.TextColor3 = Color3.fromRGB(165, 132, 60)
-	l.TextScaled = true
-	l.Font = Enum.Font.GothamBold
-	l.Text = text
-	l.ZIndex = 32
-	return l
-end
+local invItemsHeader = Instance.new("TextLabel", invPanel)
+invItemsHeader.Size                   = UDim2.new(1, -(vpX + 8), 0, 24)
+invItemsHeader.Position               = UDim2.new(0, vpX + 4, 0, 48)
+invItemsHeader.BackgroundColor3       = Color3.fromRGB(18, 52, 86)
+invItemsHeader.BackgroundTransparency = 0.35
+invItemsHeader.TextColor3             = Color3.fromRGB(80, 175, 240)
+invItemsHeader.TextScaled             = true
+invItemsHeader.Font                   = Enum.Font.GothamBold
+invItemsHeader.Text                   = "BLOCKS"
+invItemsHeader.ZIndex                 = 32
+Instance.new("UICorner", invItemsHeader).CornerRadius = UDim.new(0, 5)
 
-invSectionLbl(invLeft, "EQUIPPED", 6)
+local ICOLS     = 3
+local ISLOT_GAP = 6
+local invRightW = PANEL_W - vpX - 8
+local ISLOT_W   = math.floor((invRightW - ISLOT_GAP * (ICOLS - 1)) / ICOLS)
+local ISLOT_H   = 96
 
-local invArmorSlot = Instance.new("Frame", invLeft)
-invArmorSlot.Size             = UDim2.new(0, 110, 0, 110)
-invArmorSlot.Position         = UDim2.new(0.5, -55, 0, 28)
-invArmorSlot.BackgroundColor3 = Color3.fromRGB(30, 25, 18)
-invArmorSlot.BorderSizePixel  = 0
-invArmorSlot.ZIndex           = 32
-Instance.new("UICorner", invArmorSlot).CornerRadius = UDim.new(0, 8)
-local invArmorSlotStroke = Instance.new("UIStroke", invArmorSlot)
-invArmorSlotStroke.Color = Color3.fromRGB(100, 80, 38)
-invArmorSlotStroke.Thickness = 2
-
-local invArmorIcon = Instance.new("Frame", invArmorSlot)
-invArmorIcon.Size             = UDim2.new(0.65, 0, 0.6, 0)
-invArmorIcon.Position         = UDim2.new(0.175, 0, 0.08, 0)
-invArmorIcon.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
-invArmorIcon.BorderSizePixel  = 0
-invArmorIcon.ZIndex           = 33
-Instance.new("UICorner", invArmorIcon).CornerRadius = UDim.new(0, 5)
-
-local invArmorSlotLbl = Instance.new("TextLabel", invArmorSlot)
-invArmorSlotLbl.Size                   = UDim2.new(1, -4, 0, 22)
-invArmorSlotLbl.Position               = UDim2.new(0, 2, 1, -24)
-invArmorSlotLbl.BackgroundTransparency = 1
-invArmorSlotLbl.TextColor3             = Color3.fromRGB(180, 180, 180)
-invArmorSlotLbl.TextScaled             = true
-invArmorSlotLbl.Font                   = Enum.Font.GothamBold
-invArmorSlotLbl.Text                   = "None"
-invArmorSlotLbl.ZIndex                 = 33
-
-local invArmorTypeLbl = Instance.new("TextLabel", invLeft)
-invArmorTypeLbl.Size                   = UDim2.new(1, -10, 0, 14)
-invArmorTypeLbl.Position               = UDim2.new(0, 6, 0, 142)
-invArmorTypeLbl.BackgroundTransparency = 1
-invArmorTypeLbl.TextColor3             = Color3.fromRGB(120, 100, 55)
-invArmorTypeLbl.TextScaled             = true
-invArmorTypeLbl.Font                   = Enum.Font.Gotham
-invArmorTypeLbl.Text                   = "CHEST ARMOR"
-invArmorTypeLbl.ZIndex                 = 32
-
-local invStatsDivider = Instance.new("Frame", invLeft)
-invStatsDivider.Size             = UDim2.new(1, -14, 0, 1)
-invStatsDivider.Position         = UDim2.new(0, 7, 0, 162)
-invStatsDivider.BackgroundColor3 = Color3.fromRGB(100, 80, 35)
-invStatsDivider.BorderSizePixel  = 0
-invStatsDivider.ZIndex           = 32
-
-invSectionLbl(invLeft, "STATS", 168)
-
-local invHPLabel = Instance.new("TextLabel", invLeft)
-invHPLabel.Size                   = UDim2.new(1, -10, 0, 18)
-invHPLabel.Position               = UDim2.new(0, 6, 0, 190)
-invHPLabel.BackgroundTransparency = 1
-invHPLabel.TextColor3             = Color3.fromRGB(255, 80, 80)
-invHPLabel.TextScaled             = true
-invHPLabel.Font                   = Enum.Font.Gotham
-invHPLabel.Text                   = "HP: --- / ---"
-invHPLabel.TextXAlignment         = Enum.TextXAlignment.Left
-invHPLabel.ZIndex                 = 32
-
-local invCoinsLabel = Instance.new("TextLabel", invLeft)
-invCoinsLabel.Size                   = UDim2.new(1, -10, 0, 18)
-invCoinsLabel.Position               = UDim2.new(0, 6, 0, 212)
-invCoinsLabel.BackgroundTransparency = 1
-invCoinsLabel.TextColor3             = Color3.fromRGB(255, 215, 0)
-invCoinsLabel.TextScaled             = true
-invCoinsLabel.Font                   = Enum.Font.Gotham
-invCoinsLabel.Text                   = "Coins: $0"
-invCoinsLabel.TextXAlignment         = Enum.TextXAlignment.Left
-invCoinsLabel.ZIndex                 = 32
-
--- ── RIGHT: Block grid ──
-local invRight = Instance.new("Frame", invPanel)
-invRight.Size                   = UDim2.new(1, -156, 1, -42)
-invRight.Position               = UDim2.new(0, 153, 0, 40)
-invRight.BackgroundTransparency = 1
-invRight.ZIndex                 = 31
-
-invSectionLbl(invRight, "BLOCKS  (click to select)", 6)
-
-local IGRID  = 68
-local IGAP   = 5
-local ICOLS  = 3
 local invGridSlots  = {}
 local invGridCounts = {}
 local invGridFills  = {}
@@ -517,73 +579,111 @@ local invGridFills  = {}
 for i, blockDef in ipairs(BLOCK_TYPES) do
 	local col = (i - 1) % ICOLS
 	local row = math.floor((i - 1) / ICOLS)
-	local gx  = col * (IGRID + IGAP) + 4
-	local gy  = row * (IGRID + IGAP) + 28
+	local sx  = vpX + 4 + col * (ISLOT_W + ISLOT_GAP)
+	local sy  = 78 + row * (ISLOT_H + ISLOT_GAP)
 
-	local cell = Instance.new("TextButton", invRight)
-	cell.Size             = UDim2.new(0, IGRID, 0, IGRID)
-	cell.Position         = UDim2.new(0, gx, 0, gy)
-	cell.BackgroundColor3 = Color3.fromRGB(28, 24, 18)
+	local cell = Instance.new("TextButton", invPanel)
+	cell.Name             = "InvSlot" .. i
+	cell.Size             = UDim2.new(0, ISLOT_W, 0, ISLOT_H)
+	cell.Position         = UDim2.new(0, sx, 0, sy)
+	cell.BackgroundColor3 = Color3.fromRGB(17, 21, 32)
 	cell.BorderSizePixel  = 0
 	cell.Text             = ""
 	cell.AutoButtonColor  = false
+	cell.LayoutOrder      = i
 	cell.ZIndex           = 32
-	Instance.new("UICorner", cell).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", cell).CornerRadius = UDim.new(0, 8)
 	local cs = Instance.new("UIStroke", cell)
-	cs.Color     = Color3.fromRGB(90, 72, 38)
-	cs.Thickness = 2
+	cs.Color = Color3.fromRGB(42, 58, 88); cs.Thickness = 1.5
 
+	-- Color swatch (fills most of the slot)
 	local fill = Instance.new("Frame", cell)
-	fill.Size             = UDim2.new(1, -8, 0, IGRID - 24)
-	fill.Position         = UDim2.new(0, 4, 0, 3)
+	fill.Size             = UDim2.new(1, -10, 0, ISLOT_H - 38)
+	fill.Position         = UDim2.new(0, 5, 0, 5)
 	fill.BackgroundColor3 = blockDef.color
 	fill.BorderSizePixel  = 0
 	fill.ZIndex           = 33
-	Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 4)
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 5)
 
 	local nameL = Instance.new("TextLabel", cell)
-	nameL.Size = UDim2.new(1, -4, 0, 17)
-	nameL.Position = UDim2.new(0, 2, 1, -19)
+	nameL.Size                   = UDim2.new(1, -8, 0, 16)
+	nameL.Position               = UDim2.new(0, 4, 1, -32)
 	nameL.BackgroundTransparency = 1
-	nameL.TextColor3 = Color3.fromRGB(210, 210, 210)
-	nameL.TextScaled = true
-	nameL.Font = Enum.Font.GothamBold
-	nameL.Text = blockDef.id
-	nameL.ZIndex = 33
+	nameL.TextColor3             = Color3.fromRGB(170, 180, 200)
+	nameL.TextScaled             = true
+	nameL.Font                   = Enum.Font.Gotham
+	nameL.Text                   = blockDef.id
+	nameL.ZIndex                 = 33
 
-	local cntL = Instance.new("TextLabel", cell)
-	cntL.Size = UDim2.new(0, 28, 0, 18)
-	cntL.Position = UDim2.new(1, -30, 0, 2)
-	cntL.BackgroundTransparency = 1
-	cntL.TextColor3 = Color3.new(1, 1, 1)
-	cntL.TextScaled = true
-	cntL.Font = Enum.Font.GothamBold
-	cntL.Text = "0"
-	cntL.ZIndex = 34
+	local countL = Instance.new("TextLabel", cell)
+	countL.Size                   = UDim2.new(0, 46, 0, 20)
+	countL.Position               = UDim2.new(1, -50, 1, -22)
+	countL.BackgroundTransparency = 1
+	countL.TextColor3             = Color3.new(1, 1, 1)
+	countL.TextScaled             = true
+	countL.Font                   = Enum.Font.GothamBold
+	countL.Text                   = "0"
+	countL.ZIndex                 = 34
+
+	local keyL = Instance.new("TextLabel", cell)
+	keyL.Size                   = UDim2.new(0, 16, 0, 16)
+	keyL.Position               = UDim2.new(0, 4, 0, 4)
+	keyL.BackgroundTransparency = 1
+	keyL.TextColor3             = Color3.fromRGB(100, 120, 160)
+	keyL.TextScaled             = true
+	keyL.Font                   = Enum.Font.Gotham
+	keyL.Text                   = tostring(i)
+	keyL.ZIndex                 = 35
 
 	invGridSlots[i]  = cell
-	invGridCounts[i] = cntL
+	invGridCounts[i] = countL
 	invGridFills[i]  = fill
 end
 
 local function highlightInvSlot(index)
 	for i, cell in ipairs(invGridSlots) do
-		local s = cell:FindFirstChildOfClass("UIStroke")
-		if s then
-			s.Color     = (i == index) and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(90, 72, 38)
-			s.Thickness = (i == index) and 3 or 2
+		if cell then
+			local stroke = cell:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color     = (i == index) and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(42, 58, 88)
+				stroke.Thickness = (i == index) and 2.5 or 1.5
+			end
 		end
 	end
 end
 highlightInvSlot(1)
+
+-- Render the local player's character inside the viewport frame
+local function refreshCharPreview()
+	for _, obj in ipairs(vpFrame:GetChildren()) do
+		if obj:IsA("Model") then obj:Destroy() end
+	end
+	local char = player.Character
+	if not char then return end
+	local clone = char:Clone()
+	for _, s in ipairs(clone:GetDescendants()) do
+		if s:IsA("Script") or s:IsA("LocalScript") or s:IsA("ModuleScript") then
+			s:Destroy()
+		end
+	end
+	-- Hide tools so they don't clutter the preview
+	for _, s in ipairs(clone:GetChildren()) do
+		if s:IsA("Tool") then s:Destroy() end
+	end
+	clone.Parent = vpFrame
+	local hrp = clone:FindFirstChild("HumanoidRootPart") or clone:FindFirstChild("Torso")
+	if hrp then
+		vpCamera.CFrame = hrp.CFrame * CFrame.new(0, 0.6, 5.5) * CFrame.Angles(0, math.pi, 0)
+	end
+end
 
 -- Bag toggle button (bottom-left, above hotbar)
 local invToggleBtn = Instance.new("TextButton")
 invToggleBtn.Name             = "InvToggleBtn"
 invToggleBtn.Size             = UDim2.new(0, 54, 0, 40)
 invToggleBtn.Position         = UDim2.new(0, 10, 1, -104)
-invToggleBtn.BackgroundColor3 = Color3.fromRGB(38, 30, 18)
-invToggleBtn.TextColor3       = Color3.fromRGB(200, 165, 70)
+invToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 18, 14)
+invToggleBtn.TextColor3       = Color3.fromRGB(100, 190, 255)
 invToggleBtn.TextScaled       = true
 invToggleBtn.Font             = Enum.Font.GothamBold
 invToggleBtn.Text             = "[I]"
@@ -592,12 +692,13 @@ invToggleBtn.ZIndex           = 6
 invToggleBtn.Parent           = screenGui
 Instance.new("UICorner", invToggleBtn).CornerRadius = UDim.new(0, 8)
 local invBtnStroke = Instance.new("UIStroke", invToggleBtn)
-invBtnStroke.Color     = Color3.fromRGB(145, 115, 50)
+invBtnStroke.Color     = Color3.fromRGB(60, 160, 220)
 invBtnStroke.Thickness = 2
 
 invToggleBtn.MouseButton1Click:Connect(function()
 	invPanelOpen = not invPanelOpen
 	invPanel.Visible = invPanelOpen
+	if invPanelOpen then refreshCharPreview() end
 end)
 
 -- I key toggles the panel
@@ -607,6 +708,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if currentState ~= "SETUP" and currentState ~= "PLAYING" then return end
 	invPanelOpen = not invPanelOpen
 	invPanel.Visible = invPanelOpen
+	if invPanelOpen then refreshCharPreview() end
 end)
 
 -- Live HP update: hearts bar always, inventory panel when open
@@ -614,7 +716,7 @@ RunService.Heartbeat:Connect(function()
 	local char = player.Character
 	local hum  = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
-		if heartsFrame.Visible then
+		if heartsFrame and heartsFrame.Visible then
 			updateHearts(hum.Health, hum.MaxHealth)
 		end
 		if invPanel.Visible then
@@ -679,59 +781,80 @@ winLabel.TextColor3             = Color3.new(1, 1, 0)
 winLabel.TextScaled             = true
 winLabel.Font                   = Enum.Font.GothamBold
 
--- ── Hearts health bar (above hotbar) ──
-local HEART_SIZE = 26
-local HEART_GAP  = 3
+-- ── Hearts health bar (above hotbar) — actual heart shapes with half-heart clipping ──
+local HEART_SIZE = 46   -- larger for clearer heart rendering
+local HEART_GAP  = 5
 local NUM_HEARTS = 10
 
 local heartsFrame = Instance.new("Frame")
 heartsFrame.Name                   = "HeartsFrame"
-heartsFrame.Size                   = UDim2.new(0, NUM_HEARTS * (HEART_SIZE + HEART_GAP) - HEART_GAP, 0, HEART_SIZE)
+heartsFrame.Size                   = UDim2.new(0, NUM_HEARTS * (HEART_SIZE + HEART_GAP) - HEART_GAP, 0, HEART_SIZE + 4)
 heartsFrame.BackgroundTransparency = 1
 heartsFrame.Visible                = false
 heartsFrame.Parent                 = screenGui
 
-local heartFrames = {}
+local heartClippers = {}  -- [i] = clipper Frame whose width drives full/half/empty
+
 for hi = 1, NUM_HEARTS do
-	local h = Instance.new("Frame")
-	h.Size             = UDim2.new(0, HEART_SIZE, 0, HEART_SIZE)
-	h.Position         = UDim2.new(0, (hi - 1) * (HEART_SIZE + HEART_GAP), 0, 0)
-	h.BackgroundColor3 = Color3.fromRGB(200, 35, 35)
-	h.BorderSizePixel  = 0
-	h.Parent           = heartsFrame
-	Instance.new("UICorner", h).CornerRadius = UDim.new(0, 5)
-	-- Inner pixel shadow for blocky look
-	local inner = Instance.new("Frame", h)
-	inner.Size             = UDim2.new(1, -4, 1, -4)
-	inner.Position         = UDim2.new(0, 2, 0, 2)
-	inner.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-	inner.BorderSizePixel  = 0
-	Instance.new("UICorner", inner).CornerRadius = UDim.new(0, 3)
-	heartFrames[hi] = h
+	local slot = Instance.new("Frame")
+	slot.Name             = "Heart" .. hi
+	slot.Size             = UDim2.new(0, HEART_SIZE, 0, HEART_SIZE)
+	slot.Position         = UDim2.new(0, (hi - 1) * (HEART_SIZE + HEART_GAP), 0, 2)
+	slot.BackgroundTransparency = 1
+	slot.Parent           = heartsFrame
+
+	-- Dark empty heart (shows heart shape when unfilled)
+	local bgH = Instance.new("TextLabel", slot)
+	bgH.Size                   = UDim2.new(0, HEART_SIZE, 0, HEART_SIZE)
+	bgH.BackgroundTransparency = 1
+	bgH.TextColor3             = Color3.fromRGB(55, 18, 18)
+	bgH.TextScaled             = false
+	bgH.TextSize               = HEART_SIZE - 2
+	bgH.Font                   = Enum.Font.GothamBlack
+	bgH.Text                   = "♥"
+	bgH.TextXAlignment         = Enum.TextXAlignment.Center
+	bgH.TextYAlignment         = Enum.TextYAlignment.Center
+	bgH.TextStrokeColor3       = Color3.new(0, 0, 0)
+	bgH.TextStrokeTransparency = 0.4
+	bgH.ZIndex                 = 5
+
+	-- Clipper: 100% = full heart, 50% = half heart, 0% = empty
+	local clipper = Instance.new("Frame", slot)
+	clipper.ClipsDescendants     = true
+	clipper.BackgroundTransparency = 1
+	clipper.Size                 = UDim2.new(1, 0, 1, 0)
+	clipper.ZIndex               = 6
+
+	-- Bright red heart (fills to show health — clipped)
+	local redH = Instance.new("TextLabel", clipper)
+	redH.Size                   = UDim2.new(0, HEART_SIZE, 0, HEART_SIZE)
+	redH.BackgroundTransparency = 1
+	redH.TextColor3             = Color3.fromRGB(240, 30, 30)
+	redH.TextScaled             = false
+	redH.TextSize               = HEART_SIZE - 2
+	redH.Font                   = Enum.Font.GothamBlack
+	redH.Text                   = "♥"
+	redH.TextXAlignment         = Enum.TextXAlignment.Center
+	redH.TextYAlignment         = Enum.TextYAlignment.Center
+	redH.TextStrokeColor3       = Color3.fromRGB(90, 0, 0)
+	redH.TextStrokeTransparency = 0.25
+	redH.ZIndex                 = 7
+
+	heartClippers[hi] = clipper
 end
 
+-- hp/maxHp → hearts in 0.5 increments. 51 HP = 5 full, 55 HP = 5.5, 100 HP = 10 full.
 local function updateHearts(hp, maxHp)
-	local hpPerHeart = (maxHp or 100) / NUM_HEARTS
+	local halfPerHeart = (maxHp or 100) / NUM_HEARTS / 2  -- 5 HP per half-heart
+	local totalHalves  = math.floor(hp / halfPerHeart)
 	for hi = 1, NUM_HEARTS do
-		local threshold = hi * hpPerHeart
-		if hp >= threshold then
-			-- Full heart
-			heartFrames[hi].BackgroundColor3 = Color3.fromRGB(190, 30, 30)
-			heartFrames[hi].BackgroundTransparency = 0
-			local inner = heartFrames[hi]:FindFirstChildOfClass("Frame")
-			if inner then inner.BackgroundColor3 = Color3.fromRGB(255, 60, 60); inner.BackgroundTransparency = 0 end
-		elseif hp > (hi - 1) * hpPerHeart then
-			-- Half / partial heart
-			heartFrames[hi].BackgroundColor3 = Color3.fromRGB(130, 25, 25)
-			heartFrames[hi].BackgroundTransparency = 0
-			local inner = heartFrames[hi]:FindFirstChildOfClass("Frame")
-			if inner then inner.BackgroundColor3 = Color3.fromRGB(180, 45, 45); inner.BackgroundTransparency = 0 end
+		local halves = totalHalves - (hi - 1) * 2
+		if halves >= 2 then
+			heartClippers[hi].Size = UDim2.new(1, 0, 1, 0)
+		elseif halves == 1 then
+			heartClippers[hi].Size = UDim2.new(0.5, 0, 1, 0)
 		else
-			-- Empty heart
-			heartFrames[hi].BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-			heartFrames[hi].BackgroundTransparency = 0.3
-			local inner = heartFrames[hi]:FindFirstChildOfClass("Frame")
-			if inner then inner.BackgroundColor3 = Color3.fromRGB(70, 70, 70); inner.BackgroundTransparency = 0.3 end
+			heartClippers[hi].Size = UDim2.new(0, 0, 1, 0)
 		end
 	end
 end
@@ -823,8 +946,8 @@ local function highlightSlot(index)
 end
 highlightSlot(1)
 
--- Position hearts above hotbar (hotbar is at Y offset -(SLOT_SIZE+14))
-local hotbarHeartOffset = -(SLOT_SIZE + 14 + HEART_SIZE + 6)
+-- Position hearts above hotbar (HEART_SIZE+4 = actual frame height)
+local hotbarHeartOffset = -(SLOT_SIZE + 14 + (HEART_SIZE + 4) + 6)
 heartsFrame.Position = UDim2.new(
 	0.5, -math.floor((NUM_HEARTS * (HEART_SIZE + HEART_GAP) - HEART_GAP) / 2),
 	1, hotbarHeartOffset
@@ -1043,7 +1166,18 @@ RoundStateChanged.OnClientEvent:Connect(function(state, data)
 	armorFrame.Visible     = (isSetup or isPlaying)
 	currencyFrame.Visible  = (isSetup or isPlaying)
 	gemFrame.Visible       = (isSetup or isPlaying)
-	testButton.Visible     = (state == "LOBBY")
+	playButton.Visible      = (state == "LOBBY")
+	queueStatusLabel.Visible = (state == "LOBBY")
+	testButton.Visible      = (state == "LOBBY")
+
+	-- Reset queue button when leaving lobby
+	if state ~= "LOBBY" then
+		inQueue = false
+		playButton.Text             = "PLAY"
+		playButton.BackgroundColor3 = Color3.fromRGB(30, 140, 30)
+		playBtnStroke.Color         = Color3.fromRGB(60, 255, 60)
+		queueStatusLabel.Text       = ""
+	end
 	invToggleBtn.Visible   = (isSetup or isPlaying)
 	kitShopBtn.Visible     = (isSetup or isPlaying)
 
