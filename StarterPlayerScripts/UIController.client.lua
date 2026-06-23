@@ -321,68 +321,6 @@ shopClose.MouseButton1Click:Connect(function()
 	shopPanel.Visible = false
 end)
 
--- ── Lobby buttons (visible in LOBBY state) ──
-local JoinQueue  = RemoteEvents:WaitForChild("JoinQueue")
-local LeaveQueue = RemoteEvents:WaitForChild("LeaveQueue")
-local QueueUpdate = RemoteEvents:WaitForChild("QueueUpdate")
-
--- PLAY button (matchmaking)
-local playButton = Instance.new("TextButton")
-playButton.Name                   = "PlayButton"
-playButton.Size                   = UDim2.new(0, 220, 0, 60)
-playButton.Position               = UDim2.new(0.5, -110, 0.52, 0)
-playButton.BackgroundColor3       = Color3.fromRGB(30, 140, 30)
-playButton.TextColor3             = Color3.new(1, 1, 1)
-playButton.TextScaled             = true
-playButton.Font                   = Enum.Font.GothamBold
-playButton.Text                   = "PLAY"
-playButton.ZIndex                 = 5
-playButton.Visible                = false
-playButton.Parent                 = screenGui
-Instance.new("UICorner", playButton).CornerRadius = UDim.new(0, 12)
-local playBtnStroke = Instance.new("UIStroke", playButton)
-playBtnStroke.Color = Color3.fromRGB(60, 255, 60); playBtnStroke.Thickness = 2
-
--- Queue status label
-local queueStatusLabel = Instance.new("TextLabel")
-queueStatusLabel.Name                   = "QueueStatus"
-queueStatusLabel.Size                   = UDim2.new(0, 220, 0, 30)
-queueStatusLabel.Position               = UDim2.new(0.5, -110, 0.52, 68)
-queueStatusLabel.BackgroundTransparency = 1
-queueStatusLabel.TextColor3             = Color3.fromRGB(180, 220, 180)
-queueStatusLabel.TextScaled             = true
-queueStatusLabel.Font                   = Enum.Font.Gotham
-queueStatusLabel.Text                   = ""
-queueStatusLabel.ZIndex                 = 5
-queueStatusLabel.Visible                = false
-queueStatusLabel.Parent                 = screenGui
-
-local inQueue = false
-playButton.MouseButton1Click:Connect(function()
-	if not inQueue then
-		inQueue = true
-		JoinQueue:FireServer()
-		playButton.Text             = "LEAVE QUEUE"
-		playButton.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
-		playBtnStroke.Color         = Color3.fromRGB(255, 80, 80)
-	else
-		inQueue = false
-		LeaveQueue:FireServer()
-		playButton.Text             = "PLAY"
-		playButton.BackgroundColor3 = Color3.fromRGB(30, 140, 30)
-		playBtnStroke.Color         = Color3.fromRGB(60, 255, 60)
-	end
-end)
-
-QueueUpdate.OnClientEvent:Connect(function(count, needed, countdown)
-	if countdown and countdown > 0 then
-		queueStatusLabel.Text       = "Starting in " .. countdown .. "s..."
-		queueStatusLabel.TextColor3 = Color3.fromRGB(255, 220, 60)
-	else
-		queueStatusLabel.Text       = count .. " / " .. needed .. " players queued"
-		queueStatusLabel.TextColor3 = Color3.fromRGB(160, 215, 160)
-	end
-end)
 
 -- TEST (Solo) button
 local testButton = Instance.new("TextButton")
@@ -953,170 +891,6 @@ heartsFrame.Position = UDim2.new(
 	1, hotbarHeartOffset
 )
 
--- ── Kit Shop button (next to inventory toggle) ──
-local kitShopBtn = Instance.new("TextButton")
-kitShopBtn.Name             = "KitShopBtn"
-kitShopBtn.Size             = UDim2.new(0, 54, 0, 40)
-kitShopBtn.Position         = UDim2.new(0, 68, 1, -104)
-kitShopBtn.BackgroundColor3 = Color3.fromRGB(100, 30, 160)
-kitShopBtn.TextColor3       = Color3.fromRGB(220, 180, 255)
-kitShopBtn.TextScaled       = true
-kitShopBtn.Font             = Enum.Font.GothamBold
-kitShopBtn.Text             = "[K]"
-kitShopBtn.Visible          = false
-kitShopBtn.ZIndex           = 6
-kitShopBtn.Parent           = screenGui
-Instance.new("UICorner", kitShopBtn).CornerRadius = UDim.new(0, 8)
-local kitBtnStroke = Instance.new("UIStroke", kitShopBtn)
-kitBtnStroke.Color     = Color3.fromRGB(180, 100, 255)
-kitBtnStroke.Thickness = 2
-
--- ── Kit Shop Panel ──
-local kitPanelOpen = false
-
-local KIT_DEFS_CLIENT = {
-	{ id = "Speed",   desc = "+15% WalkSpeed" },
-	{ id = "Jump",    desc = "+20% JumpPower"  },
-	{ id = "Miner",   desc = "+50% mine speed" },
-	{ id = "Healer",  desc = "2 HP/sec regen"  },
-	{ id = "Trapper", desc = "+25% trap dmg"   },
-}
-local KIT_COST = 100
-
-local kitPanel = Instance.new("Frame")
-kitPanel.Name                   = "KitPanel"
-kitPanel.Size                   = UDim2.new(0, 300, 0, 380)
-kitPanel.Position               = UDim2.new(0.5, -150, 0.5, -190)
-kitPanel.BackgroundColor3       = Color3.fromRGB(20, 10, 35)
-kitPanel.BackgroundTransparency = 0.05
-kitPanel.Visible                = false
-kitPanel.ZIndex                 = 25
-kitPanel.Parent                 = screenGui
-Instance.new("UICorner", kitPanel).CornerRadius = UDim.new(0, 12)
-local kitPanelStroke = Instance.new("UIStroke", kitPanel)
-kitPanelStroke.Color     = Color3.fromRGB(140, 70, 220)
-kitPanelStroke.Thickness = 2
-
-local kitHeader = Instance.new("TextLabel", kitPanel)
-kitHeader.Size                   = UDim2.new(1, -40, 0, 40)
-kitHeader.Position               = UDim2.new(0, 10, 0, 8)
-kitHeader.BackgroundTransparency = 1
-kitHeader.TextColor3             = Color3.fromRGB(200, 140, 255)
-kitHeader.TextScaled             = true
-kitHeader.Font                   = Enum.Font.GothamBold
-kitHeader.Text                   = "KIT SHOP"
-kitHeader.ZIndex                 = 26
-
-local kitClose = Instance.new("TextButton", kitPanel)
-kitClose.Size             = UDim2.new(0, 30, 0, 30)
-kitClose.Position         = UDim2.new(1, -35, 0, 8)
-kitClose.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-kitClose.TextColor3       = Color3.new(1, 1, 1)
-kitClose.TextScaled       = true
-kitClose.Font             = Enum.Font.GothamBold
-kitClose.Text             = "X"
-kitClose.ZIndex           = 26
-Instance.new("UICorner", kitClose).CornerRadius = UDim.new(0, 6)
-
-kitClose.MouseButton1Click:Connect(function()
-	kitPanelOpen   = false
-	kitPanel.Visible = false
-end)
-
-local kitGemLabel = Instance.new("TextLabel", kitPanel)
-kitGemLabel.Size                   = UDim2.new(1, -20, 0, 26)
-kitGemLabel.Position               = UDim2.new(0, 10, 0, 50)
-kitGemLabel.BackgroundTransparency = 1
-kitGemLabel.TextColor3             = Color3.fromRGB(200, 150, 255)
-kitGemLabel.TextScaled             = true
-kitGemLabel.Font                   = Enum.Font.Gotham
-kitGemLabel.Text                   = "Gems: 0"
-kitGemLabel.ZIndex                 = 26
-
-local kitFeedback = Instance.new("TextLabel", kitPanel)
-kitFeedback.Size                   = UDim2.new(1, -20, 0, 22)
-kitFeedback.Position               = UDim2.new(0, 10, 1, -28)
-kitFeedback.BackgroundTransparency = 1
-kitFeedback.TextColor3             = Color3.fromRGB(100, 255, 100)
-kitFeedback.TextScaled             = true
-kitFeedback.Font                   = Enum.Font.Gotham
-kitFeedback.Text                   = ""
-kitFeedback.ZIndex                 = 26
-
-local PurchaseKit = RemoteEvents:WaitForChild("PurchaseKit")
-local KitPurchaseResponse = RemoteEvents:WaitForChild("KitPurchaseResponse")
-
-local kitRowY = 84
-for _, kdef in ipairs(KIT_DEFS_CLIENT) do
-	local row = Instance.new("Frame", kitPanel)
-	row.Size              = UDim2.new(1, -20, 0, 48)
-	row.Position          = UDim2.new(0, 10, 0, kitRowY)
-	row.BackgroundColor3  = Color3.fromRGB(40, 20, 60)
-	row.BorderSizePixel   = 0
-	row.ZIndex            = 27
-	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-
-	local nameL = Instance.new("TextLabel", row)
-	nameL.Size                   = UDim2.new(0.55, 0, 0.5, 0)
-	nameL.Position               = UDim2.new(0, 8, 0, 2)
-	nameL.BackgroundTransparency = 1
-	nameL.TextColor3             = Color3.fromRGB(230, 200, 255)
-	nameL.TextScaled             = true
-	nameL.Font                   = Enum.Font.GothamBold
-	nameL.Text                   = kdef.id
-	nameL.TextXAlignment         = Enum.TextXAlignment.Left
-	nameL.ZIndex                 = 28
-
-	local descL = Instance.new("TextLabel", row)
-	descL.Size                   = UDim2.new(0.55, 0, 0.45, 0)
-	descL.Position               = UDim2.new(0, 8, 0.5, 0)
-	descL.BackgroundTransparency = 1
-	descL.TextColor3             = Color3.fromRGB(170, 140, 200)
-	descL.TextScaled             = true
-	descL.Font                   = Enum.Font.Gotham
-	descL.Text                   = kdef.desc
-	descL.TextXAlignment         = Enum.TextXAlignment.Left
-	descL.ZIndex                 = 28
-
-	local buyK = Instance.new("TextButton", row)
-	buyK.Size             = UDim2.new(0, 90, 0, 32)
-	buyK.Position         = UDim2.new(1, -98, 0.5, -16)
-	buyK.BackgroundColor3 = Color3.fromRGB(100, 40, 160)
-	buyK.TextColor3       = Color3.new(1, 1, 1)
-	buyK.TextScaled       = true
-	buyK.Font             = Enum.Font.GothamBold
-	buyK.Text             = "♦ " .. KIT_COST
-	buyK.ZIndex           = 28
-	Instance.new("UICorner", buyK).CornerRadius = UDim.new(0, 6)
-
-	local capturedKit = kdef.id
-	buyK.MouseButton1Click:Connect(function()
-		PurchaseKit:FireServer(capturedKit)
-	end)
-
-	kitRowY = kitRowY + 54
-end
-
-kitShopBtn.MouseButton1Click:Connect(function()
-	kitPanelOpen   = not kitPanelOpen
-	kitPanel.Visible = kitPanelOpen
-end)
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.K then
-		if currentState ~= "SETUP" and currentState ~= "PLAYING" then return end
-		kitPanelOpen   = not kitPanelOpen
-		kitPanel.Visible = kitPanelOpen
-	end
-end)
-
-KitPurchaseResponse.OnClientEvent:Connect(function(success, message, kitId)
-	kitFeedback.Text       = message or ""
-	kitFeedback.TextColor3 = success
-		and Color3.fromRGB(80, 255, 80)
-		or  Color3.fromRGB(255, 80, 80)
-end)
 
 -- ========== Helpers ==========
 
@@ -1166,28 +940,14 @@ RoundStateChanged.OnClientEvent:Connect(function(state, data)
 	armorFrame.Visible     = (isSetup or isPlaying)
 	currencyFrame.Visible  = (isSetup or isPlaying)
 	gemFrame.Visible       = (isSetup or isPlaying)
-	playButton.Visible      = (state == "LOBBY")
-	queueStatusLabel.Visible = (state == "LOBBY")
 	testButton.Visible      = (state == "LOBBY")
-
-	-- Reset queue button when leaving lobby
-	if state ~= "LOBBY" then
-		inQueue = false
-		playButton.Text             = "PLAY"
-		playButton.BackgroundColor3 = Color3.fromRGB(30, 140, 30)
-		playBtnStroke.Color         = Color3.fromRGB(60, 255, 60)
-		queueStatusLabel.Text       = ""
-	end
 	invToggleBtn.Visible   = (isSetup or isPlaying)
-	kitShopBtn.Visible     = (isSetup or isPlaying)
 
-	-- Close shop/inventory/kit panel when transitioning away from active play
+	-- Close shop/inventory panel when transitioning away from active play
 	if isLobby or isResults then
 		shopPanel.Visible = false
 		invPanel.Visible  = false
-		kitPanel.Visible  = false
 		invPanelOpen      = false
-		kitPanelOpen      = false
 	end
 
 	if isLobby then
@@ -1345,8 +1105,7 @@ end)
 
 -- Gems update
 UpdateGems.OnClientEvent:Connect(function(gems)
-	gemLabel.Text      = "♦ " .. tostring(gems)
-	kitGemLabel.Text   = "Gems: " .. tostring(gems)
+	gemLabel.Text = "♦ " .. tostring(gems)
 end)
 
 -- ========== Hotbar updates from PlacementClient ==========
@@ -1597,7 +1356,7 @@ do
 	-- Toggle with backtick
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
-		if input.KeyCode == Enum.KeyCode.BackQuote then
+		if input.KeyCode == Enum.KeyCode.Backquote then
 			panel.Visible = not panel.Visible
 		end
 	end)

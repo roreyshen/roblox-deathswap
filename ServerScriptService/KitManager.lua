@@ -1,8 +1,10 @@
 -- ModuleScript: ServerScriptService > KitManager
 -- Manages player kits (passive ability loadouts). Kits cost 100 gems each.
-local Players         = game:GetService("Players")
-local RunService      = game:GetService("RunService")
-local ServerScriptService = game:GetService("ServerScriptService")
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local DataStoreService = game:GetService("DataStoreService")
+
+local kitStore = DataStoreService:GetDataStore("DeathswapKit_v1")
 
 local KitManager = {}
 
@@ -87,6 +89,14 @@ function KitManager.clearPlayer(player)
 end
 
 Players.PlayerAdded:Connect(function(player)
+	-- Load kit chosen in the lobby
+	local ok, val = pcall(function()
+		return kitStore:GetAsync("kit_" .. player.UserId)
+	end)
+	if ok and type(val) == "string" and KIT_DEFS[val] then
+		playerKits[player] = val
+	end
+
 	player.CharacterAdded:Connect(function()
 		task.wait(0.1)
 		applyToChar(player)

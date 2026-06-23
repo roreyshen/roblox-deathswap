@@ -30,43 +30,8 @@ local UpdateCurrency     = RemoteEvents:WaitForChild("UpdateCurrency")
 local OpenShop           = RemoteEvents:WaitForChild("OpenShop")
 local StartTestMode      = RemoteEvents:WaitForChild("StartTestMode")
 local UpdateGems          = RemoteEvents:WaitForChild("UpdateGems")
-local PurchaseKit         = RemoteEvents:WaitForChild("PurchaseKit")
-local KitPurchaseResponse = RemoteEvents:WaitForChild("KitPurchaseResponse")
-
--- Lobby matchmaking remotes (created here if missing)
-local function getOrCreate(name)
-	local e = RemoteEvents:FindFirstChild(name)
-	if not e then
-		e = Instance.new("RemoteEvent")
-		e.Name   = name
-		e.Parent = RemoteEvents
-	end
-	return e
-end
-local JoinQueue   = getOrCreate("JoinQueue")
-local LeaveQueue  = getOrCreate("LeaveQueue")
-local QueueUpdate = getOrCreate("QueueUpdate")
 
 ShopManager.init(RemoteEvents, UpdateInventory, UpdateCurrency)
-
--- ========== Kit purchase handler ==========
-
-PurchaseKit.OnServerEvent:Connect(function(player, kitId)
-	if type(kitId) ~= "string" then return end
-	local def = KitManager.getDef(kitId)
-	if not def then
-		KitPurchaseResponse:FireClient(player, false, "Unknown kit.")
-		return
-	end
-	if not GemManager.deduct(player, def.cost) then
-		KitPurchaseResponse:FireClient(player, false, string.format("Need %d gems.", def.cost))
-		return
-	end
-	KitManager.setKit(player, kitId)
-	local newGems = GemManager.get(player)
-	UpdateGems:FireClient(player, newGems)
-	KitPurchaseResponse:FireClient(player, true, kitId .. " Kit equipped!")
-end)
 
 local function wireShopPrompts()
 	local map   = workspace:FindFirstChild("Map")
@@ -96,12 +61,10 @@ EquipArmor.OnServerEvent:Connect(function(player, armorId)
 	end
 end)
 
--- ========== Bot factory (shared by test mode and lobby) ==========
+-- ========== Bot factory (test mode only) ==========
 
 local testModeActive = false
 local botSet         = {}    -- game bots (test mode)
-local lobbyBots      = {}    -- lobby practice bots
-local lobbyBotsActive = false
 
 local function makeBotModel(name, spawnCF, labelText, labelColor)
 	local model = Instance.new("Model")
@@ -167,85 +130,10 @@ local function clearBots()
 	botSet = {}
 end
 
--- ========== Lobby bot management ==========
-
-local LOBBY_BOT_POSITIONS = {
-	CFrame.new( 20, 120,  20),
-	CFrame.new(-20, 120,  20),
-	CFrame.new( 20, 120, -20),
-	CFrame.new(-20, 120, -20),
-	CFrame.new( 40, 120,   0),
-	CFrame.new(-40, 120,   0),
-	CFrame.new(  0, 120,  40),
-	CFrame.new(  0, 120, -40),
-}
-
-local function spawnOneLobbyBot(spawnCF)
-	if not lobbyBotsActive then return end
-	local model, hum = makeBotModel("LobbyBot", spawnCF, "PRACTICE BOT", Color3.fromRGB(120, 200, 255))
-	lobbyBots[model] = true
-	hum.Died:Connect(function()
-		lobbyBots[model] = nil
-		-- Respawn after a short delay
-		task.delay(4, function()
-			if lobbyBotsActive then
-				spawnOneLobbyBot(spawnCF)
-			end
-		end)
-	end)
-	return model
-end
-
-local function spawnLobbyBots()
-	lobbyBotsActive = true
-	for _, cf in ipairs(LOBBY_BOT_POSITIONS) do
-		spawnOneLobbyBot(cf)
-		task.wait(0.1)
-	end
-end
-
-local function clearLobbyBots()
-	lobbyBotsActive = false
-	for model in pairs(lobbyBots) do
-		pcall(function() model:Destroy() end)
-	end
-	lobbyBots = {}
-end
-
--- ========== Matchmaking queue ==========
-
-local lobbyQueue = {}  -- player → true when queued for matchmaking
-local queueCountdownActive = false
-
-local function countQueue()
-	local n = 0
-	for _ in pairs(lobbyQueue) do n += 1 end
-	return n
-end
-
-local function broadcastQueueStatus(countdown)
-	QueueUpdate:FireAllClients(countQueue(), GameConfig.MIN_PLAYERS, countdown or 0)
-end
-
-JoinQueue.OnServerEvent:Connect(function(player)
-	if GameState.current ~= "LOBBY" then return end
-	lobbyQueue[player] = true
-	broadcastQueueStatus()
-end)
-
-LeaveQueue.OnServerEvent:Connect(function(player)
-	lobbyQueue[player] = nil
-	broadcastQueueStatus()
-end)
-
 StartTestMode.OnServerEvent:Connect(function()
 	if GameState.current ~= "LOBBY" then return end
 	if #Players:GetPlayers() < 1 then return end
 	testModeActive = true
-	-- Also add the player to force-start
-	for _, p in ipairs(Players:GetPlayers()) do
-		lobbyQueue[p] = true
-	end
 end)
 
 -- ========== State ==========
@@ -510,60 +398,22 @@ end
 while true do
 	-- ── LOBBY PHASE ──────────────────────────────────────────────────────────
 	setState("LOBBY")
-	testModeActive        = false
-	queueCountdownActive  = false
-	lobbyQueue            = {}
+	testModeActive = false
 	clearBots()
-	clearLobbyBots()
 
-	-- Generate map so players have something to explore and shop in
 	MapManager.reset()
 	MapManager.generate()
 	wireShopPrompts()
 	AnchorManager.clearAll()
 
-	-- Spawn all currently connected players into the lobby
 	spawnAllPlayersInLobby()
 
-	-- Spawn lobby practice bots
-	spawnLobbyBots()
-
-	-- Fire initial queue status
-	broadcastQueueStatus()
-
-	-- Wait for enough players to queue up
-	local gameReady = false
-	while not gameReady do
-		task.wait(1)
-
-		local qCount = countQueue()
-		if qCount >= GameConfig.MIN_PLAYERS or testModeActive then
-			-- Queue is full — run matchmaking countdown
-			queueCountdownActive = true
-			local countdownOk = true
-			for i = 10, 1, -1 do
-				broadcastQueueStatus(i)
-				task.wait(1)
-				if countQueue() < GameConfig.MIN_PLAYERS and not testModeActive then
-					countdownOk      = false
-					queueCountdownActive = false
-					broadcastQueueStatus()
-					break
-				end
-			end
-			if countdownOk then
-				gameReady = true
-			end
-		else
-			broadcastQueueStatus()
-		end
-	end
+	-- Wait for enough players (teleported in from the lobby experience)
+	waitForMinPlayers()
 
 	-- ── TRANSITION TO GAME ────────────────────────────────────────────────────
 	setState("COUNTDOWN")
-	clearLobbyBots()
 
-	-- Regenerate a fresh map for the actual game
 	MapManager.reset()
 	clearBots()
 	MapManager.generate()
@@ -573,7 +423,6 @@ while true do
 	aliveSet       = {}
 	respawningSet  = {}
 	playerSpawnCFs = {}
-	lobbyQueue     = {}
 
 	spawnAllPlayers()
 

@@ -32,9 +32,7 @@
         "StartTestMode":      { "$className": "RemoteEvent" },
         "DevCheat":           { "$className": "RemoteEvent" },
         "UpdateGems":           { "$className": "RemoteEvent" },
-        "SwordSwing":           { "$className": "RemoteEvent" },
-        "PurchaseKit":          { "$className": "RemoteEvent" },
-        "KitPurchaseResponse":  { "$className": "RemoteEvent" }
+        "SwordSwing":           { "$className": "RemoteEvent" }
       }
     },
 
