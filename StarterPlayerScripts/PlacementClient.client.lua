@@ -31,9 +31,10 @@ local BLOCK_TYPES    = GameConfig.BLOCK_TYPES
 -- ========== Grid snap ==========
 
 local function snapToGrid(pos)
+	local HALF = GRID / 2
 	return Vector3.new(
 		math.round(pos.X / GRID) * GRID,
-		math.round(pos.Y / GRID) * GRID,
+		math.round((pos.Y - HALF) / GRID) * GRID + HALF,
 		math.round(pos.Z / GRID) * GRID
 	)
 end
@@ -79,12 +80,27 @@ end
 -- ========== Raycast helpers ==========
 
 local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.FilterType         = Enum.RaycastFilterType.Exclude
+rayParams.RespectCanCollide  = true   -- skip CanCollide=false parts (spawn markers, decorations)
 
 local function getTarget(extraExclude)
 	local char = player.Character
 	if not char then return nil end
 	local excludeList = { previewBlock, crystalPreview, char }
+	-- Exclude merchant NPCs, test bots, spawn markers, and lobby elements
+	local map = workspace:FindFirstChild("Map")
+	if map then
+		local shops = map:FindFirstChild("Shops")
+		if shops then table.insert(excludeList, shops) end
+		-- Exclude spawn markers so they don't shift block placement height
+		local spawnPts = map:FindFirstChild("SpawnPoints")
+		if spawnPts then table.insert(excludeList, spawnPts) end
+	end
+	for _, v in ipairs(workspace:GetChildren()) do
+		if v.Name == "TestBot" or v.Name == "LobbyBot" then
+			table.insert(excludeList, v)
+		end
+	end
 	if extraExclude then table.insert(excludeList, extraExclude) end
 	rayParams.FilterDescendantsInstances = excludeList
 
@@ -136,6 +152,10 @@ UserInputService.InputBegan:Connect(function(input, gp)
 		[Enum.KeyCode.Three] = 3,
 		[Enum.KeyCode.Four]  = 4,
 		[Enum.KeyCode.Five]  = 5,
+		[Enum.KeyCode.Six]   = 6,
+		[Enum.KeyCode.Seven] = 7,
+		[Enum.KeyCode.Eight] = 8,
+		[Enum.KeyCode.Nine]  = 9,
 	}
 	local slot = numMap[input.KeyCode]
 	if slot then
@@ -147,7 +167,10 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 -- Left-click: place block OR place anchor (SETUP)
-mouse.Button1Down:Connect(function()
+-- Using InputBegan so clicks on GUI elements (inventory slots) are ignored
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end  -- skip if clicking a GUI element
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 	if not canPlace then return end
 
 	if canPlaceAnchor and not anchorPlaced then
@@ -239,3 +262,15 @@ invEvent.Parent = player
 local anchorStatusEvent = Instance.new("BindableEvent")
 anchorStatusEvent.Name   = "AnchorStatusChanged"
 anchorStatusEvent.Parent = player
+
+-- UIController fires this when player clicks an inventory slot
+local selectSlotEvent = Instance.new("BindableEvent")
+selectSlotEvent.Name   = "SelectSlot"
+selectSlotEvent.Parent = player
+
+selectSlotEvent.Event:Connect(function(slot)
+	selectedSlot = slot
+	updatePreviewBlock()
+	local selChanged = player:FindFirstChild("SelectedSlotChanged")
+	if selChanged then selChanged:Fire(selectedSlot) end
+end)

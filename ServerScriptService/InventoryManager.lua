@@ -11,10 +11,22 @@ function InventoryManager.reset(player)
 	for id, count in pairs(GameConfig.STARTING_INVENTORY) do
 		inventories[player][id] = count
 	end
+	-- Seed armor slots at 0
+	for _, armorDef in ipairs(GameConfig.ARMOR_TYPES or {}) do
+		inventories[player][armorDef.id] = inventories[player][armorDef.id] or 0
+	end
 end
 
 function InventoryManager.get(player)
 	return inventories[player] or {}
+end
+
+-- Adds blocks to inventory (e.g. from terrain mining)
+function InventoryManager.add(player, blockId, amount)
+	amount = amount or 1
+	local inv = inventories[player]
+	if not inv then return end
+	inv[blockId] = (inv[blockId] or 0) + amount
 end
 
 -- Returns true and decrements if the player has >= amount of blockId

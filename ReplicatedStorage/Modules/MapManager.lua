@@ -1,14 +1,49 @@
 -- ModuleScript: ReplicatedStorage > Modules > MapManager
 local MapManager = {}
 
-local function getMapFolder()
-	return workspace:FindFirstChild("Map")
+-- MapGenerator is a server-only module; require lazily so this module
+-- can still be required on the client without erroring.
+local MapGenerator = nil
+local function getGenerator()
+	if MapGenerator then return MapGenerator end
+	local ok, mod = pcall(function()
+		return require(game:GetService("ServerScriptService").MapGenerator)
+	end)
+	if ok then MapGenerator = mod end
+	return MapGenerator
 end
 
--- Destroy all blocks placed during the round
+local BORDER_SIZE = 300  -- studs from center to kill-wall
+
+local function getMapFolder()
+	local map = workspace:FindFirstChild("Map")
+	if not map then
+		map = Instance.new("Folder")
+		map.Name   = "Map"
+		map.Parent = workspace
+	end
+	return map
+end
+
+-- Generate a fresh random island for the round (server only)
+function MapManager.generate()
+	local map = getMapFolder()
+	local gen = getGenerator()
+	if gen then
+		local info = gen.generate(map)
+		gen.buildKillBorder(map, BORDER_SIZE)
+		return info
+	end
+end
+
+-- Destroy all blocks placed during the round AND the generated island
 function MapManager.reset()
 	local map = getMapFolder()
 	if not map then return end
+
+	local gen = getGenerator()
+	if gen then gen.clear(map) end
+
 	local builds = map:FindFirstChild("PlayerBuilds")
 	if builds then
 		for _, child in ipairs(builds:GetChildren()) do

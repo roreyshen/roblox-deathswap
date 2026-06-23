@@ -1,0 +1,44 @@
+{
+  "name": "deathswap-lobby",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "RemoteEvents": {
+        "$className": "Folder",
+        "UpdateGems":         { "$className": "RemoteEvent" },
+        "UpdateKit":          { "$className": "RemoteEvent" },
+        "PurchaseKit":        { "$className": "RemoteEvent" },
+        "KitPurchaseResponse":{ "$className": "RemoteEvent" },
+        "JoinQueue":          { "$className": "RemoteEvent" },
+        "LeaveQueue":         { "$className": "RemoteEvent" },
+        "QueueUpdate":        { "$className": "RemoteEvent" },
+        "OpenKitShop":        { "$className": "RemoteEvent" }
+      }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "GemManager":        { "$path": "ServerScriptService/GemManager.lua" },
+      "KitManager":        { "$path": "ServerScriptService/KitManager.lua" },
+      "LobbyMapGenerator": { "$path": "ServerScriptService/LobbyMapGenerator.lua" },
+      "LobbyServer":       { "$path": "ServerScriptService/LobbyServer.server.lua" }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "StarterPlayerScripts"
+      }
+    },
+
+    "Workspace": {
+      "$className": "Workspace",
+      "LobbyMap": {
+        "$className": "Folder"
+      }
+    }
+  }
+}

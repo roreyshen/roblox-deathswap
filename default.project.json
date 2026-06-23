@@ -22,13 +22,30 @@
         "AnchorDestroyed":    { "$className": "RemoteEvent" },
         "AnchorHealthUpdate": { "$className": "RemoteEvent" },
         "PlayerRespawning":   { "$className": "RemoteEvent" },
-        "PlayerEliminated":   { "$className": "RemoteEvent" }
+        "PlayerEliminated":   { "$className": "RemoteEvent" },
+        "EquipArmor":         { "$className": "RemoteEvent" },
+        "ArmorEquipped":      { "$className": "RemoteEvent" },
+        "UpdateCurrency":     { "$className": "RemoteEvent" },
+        "PurchaseItem":       { "$className": "RemoteEvent" },
+        "ShopResponse":       { "$className": "RemoteEvent" },
+        "OpenShop":           { "$className": "RemoteEvent" },
+        "StartTestMode":      { "$className": "RemoteEvent" },
+        "DevCheat":           { "$className": "RemoteEvent" },
+        "UpdateGems":           { "$className": "RemoteEvent" },
+        "SwordSwing":           { "$className": "RemoteEvent" }
       }
     },
 
     "ServerScriptService": {
       "$className": "ServerScriptService",
-      "$path": "ServerScriptService"
+      "$path": "ServerScriptService",
+      "MapGenerator": { "$path": "ServerScriptService/MapGenerator.lua" },
+      "GemManager":    { "$path": "ServerScriptService/GemManager.lua" },
+      "CheatHandler":  { "$path": "ServerScriptService/CheatHandler.server.lua" },
+      "ToolManager":    { "$path": "ServerScriptService/ToolManager.lua" },
+      "ToolManagerInit": { "$path": "ServerScriptService/ToolManager.server.lua" },
+      "KitManager":     { "$path": "ServerScriptService/KitManager.lua" },
+      "RoundStats":     { "$path": "ServerScriptService/RoundStats.lua" }
     },
 
     "StarterPlayer": {

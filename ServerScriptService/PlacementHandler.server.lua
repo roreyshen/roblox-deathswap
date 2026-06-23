@@ -8,6 +8,9 @@ local MapManager       = require(ReplicatedStorage:WaitForChild("MapManager"))
 local InventoryManager = require(ServerScriptService.InventoryManager)
 local GameState        = require(ServerScriptService.GameState)
 local AnchorManager    = require(ServerScriptService.AnchorManager)
+local ToolManager      = require(ServerScriptService.ToolManager)
+local GemManager       = require(ServerScriptService.GemManager)
+local RoundStats       = require(ServerScriptService.RoundStats)
 
 local RemoteEvents     = ReplicatedStorage:WaitForChild("RemoteEvents")
 local PlaceBlock       = RemoteEvents:WaitForChild("PlaceBlock")
@@ -17,15 +20,20 @@ local PlaceAnchor      = RemoteEvents:WaitForChild("PlaceAnchor")
 local MineAnchor       = RemoteEvents:WaitForChild("MineAnchor")
 local AnchorDestroyed  = RemoteEvents:WaitForChild("AnchorDestroyed")
 local AnchorHealthUpdate = RemoteEvents:WaitForChild("AnchorHealthUpdate")
+local UpdateGems       = RemoteEvents:WaitForChild("UpdateGems")
 
-local GRID = GameConfig.GRID_SIZE
+local GRID       = GameConfig.GRID_SIZE
+local RADIUS     = GameConfig.ISLAND_RADIUS or 100
+-- Max Y players can place blocks (surface Y + height limit)
+local MAX_PLACE_Y = GameConfig.ISLAND_Y + GameConfig.GRID_SIZE * 4 + (GameConfig.PLACE_HEIGHT_LIMIT or 40)
 
 -- ========== Helpers ==========
 
 local function snapToGrid(pos)
+	local HALF = GRID / 2
 	return Vector3.new(
 		math.round(pos.X / GRID) * GRID,
-		math.round(pos.Y / GRID) * GRID,
+		math.round((pos.Y - HALF) / GRID) * GRID + HALF,
 		math.round(pos.Z / GRID) * GRID
 	)
 end
@@ -121,6 +129,11 @@ PlaceBlock.OnServerEvent:Connect(function(player, clientPos, blockId)
 	local snapped = snapToGrid(clientPos)
 
 	if (snapped - root.Position).Magnitude > GameConfig.PLACE_RANGE + 2 then return end
+
+	-- Height and radius limits
+	if snapped.Y > MAX_PLACE_Y then return end
+	if snapped.X * snapped.X + snapped.Z * snapped.Z > RADIUS * RADIUS then return end
+
 	if not isClear(snapped) then return end
 	if not InventoryManager.deduct(player, blockId) then return end
 
@@ -134,10 +147,17 @@ PlaceBlock.OnServerEvent:Connect(function(player, clientPos, blockId)
 	part.CastShadow = true
 	part.Parent     = MapManager.getBuildsFolder()
 
+	-- Track who placed this block and its max HP
+	local maxHp = (GameConfig.BLOCK_HP and GameConfig.BLOCK_HP[blockId]) or 1
+	part:SetAttribute("PlacedBy", player.UserId)
+	part:SetAttribute("HP",       maxHp)
+	part:SetAttribute("MaxHP",    maxHp)
+
 	if blockDef.damagePer  then attachLavaDamage(part, blockDef.damagePer)      end
 	if blockDef.damageOnce then attachSpikeDamage(part, blockDef.damageOnce)    end
 	if blockDef.explode    then attachTNT(part)                                  end
 
+	RoundStats.addBlock(player)
 	UpdateInventory:FireClient(player, InventoryManager.get(player))
 end)
 
@@ -148,19 +168,57 @@ RemoveBlock.OnServerEvent:Connect(function(player, targetPart)
 	if state ~= "PLAYING" and state ~= "SETUP" then return end
 	if not targetPart or not targetPart:IsA("BasePart") then return end
 	if targetPart:GetAttribute("IsAnchor") then return end  -- use MineAnchor for crystals
-
-	local buildsFolder = MapManager.getBuildsFolder()
-	if not buildsFolder then return end
-	if not targetPart:IsDescendantOf(buildsFolder) then return end
+	if targetPart:GetAttribute("IsBarrier") then return end  -- perimeter barrier is indestructible
+	if targetPart:GetAttribute("IsBedrock") then return end  -- bedrock is indestructible
 
 	local root = getRoot(player)
 	if not root then return end
 	if (targetPart.Position - root.Position).Magnitude > GameConfig.PLACE_RANGE + 2 then return end
 
-	InventoryManager.refund(player, targetPart.Name, 1)
-	targetPart:Destroy()
+	-- Terrain blocks (voxel island / trees) — HP-based, drop into inventory on destroy
+	if targetPart:GetAttribute("IsTerrain") then
+		local mineMult = ToolManager.getMineMultiplier(player)
+		local dmg = math.max(1, math.floor(mineMult))
+		local hp  = (targetPart:GetAttribute("HP") or 1) - dmg
+		if hp <= 0 then
+			local blockId = targetPart:GetAttribute("BlockType")
+			if blockId and getBlockDef(blockId) then
+				InventoryManager.add(player, blockId, 1)
+				UpdateInventory:FireClient(player, InventoryManager.get(player))
+			end
+			targetPart:Destroy()
+		else
+			targetPart:SetAttribute("HP", hp)
+			local maxHp = targetPart:GetAttribute("MaxHP") or 1
+			targetPart.Color = targetPart.Color:Lerp(Color3.fromRGB(20, 20, 20), ((maxHp - hp) / maxHp) * 0.5)
+		end
+		return
+	end
 
-	UpdateInventory:FireClient(player, InventoryManager.get(player))
+	-- Player-placed blocks
+	local buildsFolder = MapManager.getBuildsFolder()
+	if not buildsFolder then return end
+	if not targetPart:IsDescendantOf(buildsFolder) then return end
+
+	local placedBy = targetPart:GetAttribute("PlacedBy")
+
+	if placedBy == player.UserId then
+		-- Own block: instant remove with 50% refund
+		InventoryManager.refund(player, targetPart.Name, 1)
+		targetPart:Destroy()
+		UpdateInventory:FireClient(player, InventoryManager.get(player))
+	else
+		-- Enemy block: HP-based destruction
+		local hp = (targetPart:GetAttribute("HP") or 1) - 1
+		if hp <= 0 then
+			targetPart:Destroy()
+		else
+			targetPart:SetAttribute("HP", hp)
+			local maxHp = targetPart:GetAttribute("MaxHP") or 1
+			local pct   = hp / maxHp
+			targetPart.Color = targetPart.Color:Lerp(Color3.fromRGB(20, 20, 20), (1 - pct) * 0.4)
+		end
+	end
 end)
 
 -- ========== Soul Crystal placement (SETUP only) ==========
@@ -199,11 +257,14 @@ MineAnchor.OnServerEvent:Connect(function(player, anchorPart)
 	AnchorHealthUpdate:FireAllClients(ownerUserId, hp, GameConfig.ANCHOR_MAX_HP)
 
 	if hp == 0 then
-		-- Find the owner's display name
 		local ownerName = "Unknown"
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p.UserId == ownerUserId then ownerName = p.Name; break end
 		end
 		AnchorDestroyed:FireAllClients(ownerUserId, ownerName)
+		-- Award 5 gems to the player who destroyed the crystal
+		local newGems = GemManager.add(player, 5)
+		RoundStats.addGems(player, 5)
+		UpdateGems:FireClient(player, newGems)
 	end
 end)
